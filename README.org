@@ -1,6 +1,4 @@
-#+title: titan-clj
+#+title: titan2
 
 ref. https://github.com/tsu-nera/yaseru
-
-
 
