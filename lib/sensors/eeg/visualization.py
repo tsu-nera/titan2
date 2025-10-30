@@ -1,0 +1,409 @@
+"""
+EEG可視化モジュール
+"""
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+
+from .constants import FREQ_BANDS
+
+
+def plot_band_power_time_series(df, bands=None, img_path=None, rolling_window=50):
+    """
+    バンドパワーの時系列推移をプロット
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Mind Monitorデータフレーム（バンドパワー列を含む）
+    bands : list, optional
+        バンド名リスト
+    img_path : str or Path, optional
+        保存先パス（Noneの場合は保存しない）
+    rolling_window : int
+        移動平均のウィンドウサイズ
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        生成された図オブジェクト
+    """
+    if bands is None:
+        bands = list(FREQ_BANDS.keys())
+
+    rolling = df.copy()
+
+    for band in bands:
+        cols = [c for c in df.columns if c.startswith(f'{band}_')]
+        if not cols:
+            continue
+        numeric = df[cols].apply(pd.to_numeric, errors='coerce')
+        rolling[band] = numeric.mean(axis=1).rolling(
+            window=rolling_window, min_periods=1
+        ).mean()
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+    colors = [FREQ_BANDS[band][2] for band in bands if band in FREQ_BANDS]
+
+    for band, color in zip(bands, colors):
+        if band in rolling.columns:
+            ax.plot(df['TimeStamp'], rolling[band], label=band, color=color, linewidth=2)
+
+    ax.set_title('バンドパワーの時間推移', fontsize=14, fontweight='bold')
+    ax.set_xlabel('時刻')
+    ax.set_ylabel('パワー (相対値)')
+    ax.legend(loc='upper right', fontsize=11)
+    ax.grid(True, alpha=0.3)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+    fig.autofmt_xdate()
+    plt.tight_layout()
+
+    if img_path:
+        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    return fig
+
+
+def plot_psd(psd_dict, bands=None, img_path=None):
+    """
+    パワースペクトル密度（PSD）をプロット
+
+    Parameters
+    ----------
+    psd_dict : dict
+        calculate_psd()の戻り値
+    bands : dict, optional
+        バンド定義辞書
+    img_path : str or Path, optional
+        保存先パス
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        生成された図オブジェクト
+    """
+    if bands is None:
+        bands = FREQ_BANDS
+
+    freqs = psd_dict['freqs']
+    psds = psd_dict['psds']
+    channels = psd_dict['channels']
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+    channel_colors = ['blue', 'green', 'red', 'purple']
+
+    for ch_name, psd, color in zip(channels, psds, channel_colors):
+        channel_label = ch_name.replace('RAW_', '')
+        ax.plot(freqs, psd, label=channel_label, linewidth=2, color=color, alpha=0.8)
+
+    # バンド領域をハイライト
+    for band, (low, high, color) in bands.items():
+        ax.axvspan(low, high, alpha=0.1, color=color, label=f'{band} ({low}-{high}Hz)')
+
+    ax.set_xlim(0, min(50, freqs.max()))
+    ax.set_yscale('log')
+    ax.set_xlabel('周波数 (Hz)', fontsize=12)
+    ax.set_ylabel('パワースペクトル密度 (μV²/Hz)', fontsize=12)
+    ax.set_title('脳波のパワースペクトル密度（PSD）', fontsize=14, fontweight='bold')
+    ax.grid(True, which='both', alpha=0.3)
+    ax.legend(loc='upper right', fontsize=10)
+    plt.tight_layout()
+
+    if img_path:
+        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    return fig
+
+
+def plot_spectrogram(tfr_dict, bands=None, img_path=None):
+    """
+    スペクトログラムをプロット
+
+    Parameters
+    ----------
+    tfr_dict : dict
+        calculate_spectrogram()の戻り値
+    bands : dict, optional
+        バンド定義辞書
+    img_path : str or Path, optional
+        保存先パス
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        生成された図オブジェクト
+    """
+    if bands is None:
+        bands = FREQ_BANDS
+
+    power = tfr_dict['power']
+    freqs = tfr_dict['freqs']
+    times = tfr_dict['times']
+    channel = tfr_dict['channel']
+
+    # dB変換
+    power_db = 10 * np.log10(power)
+
+    fig, ax = plt.subplots(figsize=(14, 7))
+
+    im = ax.pcolormesh(
+        times,
+        freqs,
+        power_db,
+        shading='auto',
+        cmap='viridis',
+        vmin=np.percentile(power_db, 5),
+        vmax=np.percentile(power_db, 95)
+    )
+
+    # バンド境界線
+    fmax = freqs.max()
+    for band, (low, high, _) in bands.items():
+        if low <= fmax:
+            ax.axhline(y=low, color='white', linestyle='--', alpha=0.5, linewidth=1)
+            if high <= fmax:
+                ax.text(times[-1] * 0.02, (low + high) / 2, band,
+                       color='white', fontsize=10, fontweight='bold')
+
+    ax.set_xlabel('時間 (秒)', fontsize=12)
+    ax.set_ylabel('周波数 (Hz)', fontsize=12)
+    ax.set_title(f'スペクトログラム - {channel.replace("RAW_", "")}',
+                fontsize=14, fontweight='bold')
+    ax.set_ylim(0, fmax)
+
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label('パワー (dB, μV²)', fontsize=11)
+
+    plt.tight_layout()
+
+    if img_path:
+        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    return fig
+
+
+def plot_band_ratios(ratios_dict, resample_interval='10S', img_path=None):
+    """
+    バンド比率の時系列をプロット
+
+    Parameters
+    ----------
+    ratios_dict : dict
+        calculate_band_ratios()の戻り値
+    resample_interval : str
+        リサンプリング間隔
+    img_path : str or Path, optional
+        保存先パス
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        生成された図オブジェクト
+    """
+    ratio_df = ratios_dict['ratios']
+
+    ratio_configs = [
+        'リラックス度 (α/β)',
+        '集中度 (β/θ)',
+        '瞑想深度 (θ/α)',
+    ]
+
+    fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
+    colors = ['green', 'orange', 'purple']
+
+    for i, ratio_name in enumerate(ratio_configs):
+        if ratio_name in ratio_df.columns:
+            axes[i].plot(ratio_df['TimeStamp'], ratio_df[ratio_name],
+                        color=colors[i], linewidth=2.5, marker='o', markersize=2, alpha=0.9)
+            axes[i].axhline(y=1.0, color='gray', linestyle='--', alpha=0.5, linewidth=1.5,
+                           label='基準値 (1.0)')
+            axes[i].set_ylabel(ratio_name, fontsize=11, fontweight='bold')
+            axes[i].grid(True, alpha=0.3)
+            axes[i].legend(loc='upper right', fontsize=9)
+
+            data_values = ratio_df[ratio_name].dropna()
+            if len(data_values) > 0:
+                y_min = max(0, data_values.quantile(0.05) * 0.9)
+                y_max = data_values.quantile(0.95) * 1.1
+                axes[i].set_ylim(y_min, y_max)
+
+                mean_val = data_values.mean()
+                axes[i].axhline(y=mean_val, color=colors[i], linestyle=':',
+                              alpha=0.4, linewidth=1.5, label=f'平均 ({mean_val:.2f})')
+
+    axes[0].set_title(f'脳波指標の時間推移（{resample_interval}ごと平均）',
+                     fontsize=14, fontweight='bold')
+    axes[-1].set_xlabel('時刻', fontsize=12)
+    axes[-1].xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+    fig.autofmt_xdate()
+    plt.tight_layout()
+
+    if img_path:
+        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    return fig
+
+
+def plot_paf(paf_dict, img_path=None):
+    """
+    Peak Alpha Frequency（PAF）をプロット
+
+    Parameters
+    ----------
+    paf_dict : dict
+        calculate_paf()の戻り値
+    img_path : str or Path, optional
+        保存先パス
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        生成された図オブジェクト
+    """
+    paf_results = paf_dict['paf_by_channel']
+    iaf = paf_dict['iaf']
+    alpha_low, alpha_high = paf_dict['alpha_range']
+    alpha_freqs = paf_dict['alpha_freqs']
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+    channel_colors = ['blue', 'green', 'red', 'purple']
+
+    # 左図: Alpha帯域のPSDとPAF
+    for ch_label, result in paf_results.items():
+        color = channel_colors[list(paf_results.keys()).index(ch_label)]
+        ax1.plot(alpha_freqs, result['PSD'], label=ch_label,
+                linewidth=2, color=color, alpha=0.8)
+        ax1.scatter(result['PAF'], result['Power'],
+                   s=100, color=color, marker='o', zorder=5)
+
+    ax1.axvline(x=iaf, color='black', linestyle='--', linewidth=2,
+               label=f'IAF = {iaf:.2f} Hz')
+    ax1.set_xlabel('周波数 (Hz)', fontsize=12)
+    ax1.set_ylabel('パワースペクトル密度 (μV²/Hz)', fontsize=12)
+    ax1.set_title('Alpha帯域のPSD と PAF', fontsize=13, fontweight='bold')
+    ax1.legend(fontsize=10)
+    ax1.grid(True, alpha=0.3)
+
+    # 右図: チャネル別PAFの棒グラフ
+    channels = list(paf_results.keys())
+    pafs = [paf_results[ch]['PAF'] for ch in channels]
+    colors_bar = [channel_colors[i] for i in range(len(channels))]
+
+    bars = ax2.bar(channels, pafs, color=colors_bar, alpha=0.7, edgecolor='black')
+    ax2.axhline(y=iaf, color='black', linestyle='--', linewidth=2,
+               label=f'IAF = {iaf:.2f} Hz')
+    ax2.set_ylabel('PAF (Hz)', fontsize=12)
+    ax2.set_xlabel('チャネル', fontsize=12)
+    ax2.set_title('チャネル別 Peak Alpha Frequency', fontsize=13, fontweight='bold')
+    ax2.set_ylim(alpha_low, alpha_high)
+    ax2.legend(fontsize=10)
+    ax2.grid(True, alpha=0.3, axis='y')
+
+    for bar, paf in zip(bars, pafs):
+        height = bar.get_height()
+        ax2.text(bar.get_x() + bar.get_width()/2., height,
+                f'{paf:.2f}',
+                ha='center', va='bottom', fontsize=10, fontweight='bold')
+
+    plt.tight_layout()
+
+    if img_path:
+        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    return fig
+
+
+def plot_paf_time_evolution(paf_time_dict, df, paf_dict, img_path=None):
+    """
+    PAFの時間的変化をプロット
+
+    Parameters
+    ----------
+    paf_time_dict : dict
+        calculate_paf_time_evolution()の戻り値
+    df : pd.DataFrame
+        タイムスタンプ情報を含むデータフレーム
+    paf_dict : dict
+        calculate_paf()の戻り値
+    img_path : str or Path, optional
+        保存先パス
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        生成された図オブジェクト
+    """
+    paf_over_time = paf_time_dict['paf_over_time']
+    paf_smoothed = paf_time_dict['paf_smoothed']
+    times = paf_time_dict['times']
+    alpha_power = paf_time_dict['alpha_power']
+    alpha_freqs = paf_time_dict['alpha_freqs']
+
+    iaf = paf_dict['iaf']
+    alpha_low, alpha_high = paf_dict['alpha_range']
+
+    # 時間軸をタイムスタンプに変換
+    start_time = df['TimeStamp'].min()
+    time_stamps = [start_time + pd.Timedelta(seconds=t) for t in times]
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+
+    # 上図: PAFの時間変化
+    ax1.plot(time_stamps, paf_over_time, color='lightblue',
+            alpha=0.3, linewidth=1, label='生データ')
+    ax1.plot(time_stamps, paf_smoothed, color='blue',
+            linewidth=2, label=f'移動平均')
+    ax1.axhline(y=iaf, color='red', linestyle='--', linewidth=2,
+               label=f'IAF = {iaf:.2f} Hz')
+    ax1.fill_between(time_stamps, alpha_low, alpha_high,
+                     alpha=0.1, color='green', label='Alpha帯域 (8-13 Hz)')
+    ax1.set_ylabel('PAF (Hz)', fontsize=12)
+    ax1.set_title('Peak Alpha Frequency の時間推移',
+                 fontsize=13, fontweight='bold')
+    ax1.legend(loc='upper right', fontsize=10)
+    ax1.grid(True, alpha=0.3)
+    ax1.set_ylim(alpha_low - 0.5, alpha_high + 0.5)
+
+    # 下図: PAFの変動性（スペクトログラム）
+    im = ax2.pcolormesh(
+        time_stamps,
+        alpha_freqs,
+        alpha_power,
+        shading='auto',
+        cmap='viridis',
+        vmin=np.percentile(alpha_power, 5),
+        vmax=np.percentile(alpha_power, 95)
+    )
+    ax2.plot(time_stamps, paf_smoothed, color='red',
+            linewidth=2, linestyle='--', label='PAF推移')
+    ax2.set_xlabel('時刻', fontsize=12)
+    ax2.set_ylabel('周波数 (Hz)', fontsize=12)
+    ax2.set_title('Alpha帯域のスペクトログラムとPAF', fontsize=13, fontweight='bold')
+    ax2.legend(loc='upper right', fontsize=10)
+
+    cbar = fig.colorbar(im, ax=ax2)
+    cbar.set_label('パワー (μV²)', fontsize=11)
+
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+    fig.autofmt_xdate()
+
+    plt.tight_layout()
+
+    if img_path:
+        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    return fig
+
+
+def setup_japanese_font():
+    """日本語フォント設定"""
+    plt.rcParams['font.family'] = 'Noto Sans CJK JP'
+    plt.rcParams['axes.unicode_minus'] = False

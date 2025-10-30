@@ -1,6 +1,8 @@
 """
-呼吸数推定ライブラリ
-心拍変動（HRV）から呼吸数を推定
+PPG（Photoplethysmography）センサー解析ライブラリ
+心拍変動（HRV）からの呼吸数推定
+
+PPGセンサーによる心拍計測データから呼吸数を推定します。
 """
 
 import numpy as np

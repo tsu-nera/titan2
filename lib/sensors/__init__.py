@@ -1,36 +1,30 @@
 """
-Mind Monitor Analysis Library
+センサー解析モジュール
+各種生体センサーの信号処理と解析
+
+- PPG: 心拍・呼吸数推定
+- fNIRS: 脳血流計測
+- EEG: 脳波解析
 """
 
-from .loaders import (
-    load_mind_monitor_csv,
-    get_eeg_data,
-    get_optics_data,
-    get_heart_rate_data,
-    get_data_summary
-)
-
-from .sensors.fnirs import (
-    calculate_hbo_hbr,
-    analyze_fnirs
-)
-
-from .sensors.ppg import (
+# PPGセンサー（心拍・呼吸）
+from .ppg import (
     estimate_rr_intervals,
     estimate_respiratory_rate_welch,
     estimate_respiratory_rate_fft,
     analyze_respiratory
 )
 
-from .visualization import (
-    plot_fnirs,
-    plot_fnirs_muse_style,
-    plot_respiratory,
-    plot_frequency_spectrum,
-    plot_integrated_dashboard
+# fNIRSセンサー（脳血流）
+from .fnirs import (
+    calculate_hbo_hbr,
+    analyze_fnirs
 )
 
-from .sensors.eeg import (
+# EEGセンサー（脳波）
+from .eeg import (
+    FREQ_BANDS,
+    DEFAULT_SFREQ,
     calculate_band_statistics,
     prepare_mne_raw,
     calculate_psd,
@@ -45,33 +39,21 @@ from .sensors.eeg import (
     plot_paf,
     plot_paf_time_evolution,
     get_psd_peak_frequencies,
-    setup_japanese_font,
-    FREQ_BANDS
+    setup_japanese_font
 )
 
 __all__ = [
-    # loaders
-    'load_mind_monitor_csv',
-    'get_eeg_data',
-    'get_optics_data',
-    'get_heart_rate_data',
-    'get_data_summary',
-    # fnirs
-    'calculate_hbo_hbr',
-    'analyze_fnirs',
-    # respiratory
+    # PPG
     'estimate_rr_intervals',
     'estimate_respiratory_rate_welch',
     'estimate_respiratory_rate_fft',
     'analyze_respiratory',
-    # visualization
-    'plot_fnirs',
-    'plot_fnirs_muse_style',
-    'plot_respiratory',
-    'plot_frequency_spectrum',
-    'plot_integrated_dashboard',
-    # eeg
-    'get_eeg_data',
+    # fNIRS
+    'calculate_hbo_hbr',
+    'analyze_fnirs',
+    # EEG
+    'FREQ_BANDS',
+    'DEFAULT_SFREQ',
     'calculate_band_statistics',
     'prepare_mne_raw',
     'calculate_psd',
@@ -87,5 +69,4 @@ __all__ = [
     'plot_paf_time_evolution',
     'get_psd_peak_frequencies',
     'setup_japanese_font',
-    'FREQ_BANDS',
 ]

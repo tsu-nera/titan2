@@ -1,16 +1,26 @@
 """
 Mind Monitor データローダー
-CSV読み込みと前処理の共通関数
+Mind Monitor CSVの読み込みとデータ抽出の統合モジュール
+
+このモジュールはMind Monitor固有のCSVフォーマットに依存しています。
 """
 
 import pandas as pd
 import numpy as np
 from pathlib import Path
 
+# EEG定数のインポート（get_eeg_data用）
+from ..sensors.eeg.constants import DEFAULT_SFREQ
+
 
 def load_mind_monitor_csv(csv_path, quality_filter=True):
     """
     Mind Monitor CSVファイルを読み込む
+
+    Mind Monitor固有の仕様:
+    - TimeStampカラムの存在を前提
+    - HeadBandOnによる品質フィルタリング
+    - Time_sec相対時間カラムの自動追加
 
     Parameters
     ----------
@@ -39,9 +49,65 @@ def load_mind_monitor_csv(csv_path, quality_filter=True):
     return df
 
 
+def get_eeg_data(df):
+    """
+    EEGデータ（RAWチャネル）を取得
+
+    Mind Monitor固有の仕様:
+    - RAW_TP9, RAW_AF7, RAW_AF8, RAW_TP10カラムを検出
+    - Time_secカラムを使用（存在しない場合はフォールバック）
+    - TimeStampカラムを使用
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Mind Monitorデータフレーム
+
+    Returns
+    -------
+    eeg_dict : dict or None
+        {
+            'TP9': np.ndarray,
+            'AF7': np.ndarray,
+            'AF8': np.ndarray,
+            'TP10': np.ndarray,
+            'time': np.ndarray,
+            'timestamps': pd.DatetimeIndex
+        }
+        RAWチャネルが見つからない場合はNone
+    """
+    raw_cols = [c for c in df.columns if c.startswith('RAW_')]
+
+    if not raw_cols:
+        return None
+
+    # タイムスタンプが存在しない場合は相対時間を生成
+    if 'Time_sec' in df.columns:
+        time = df['Time_sec'].values
+    else:
+        time = np.arange(len(df)) / DEFAULT_SFREQ
+
+    eeg_dict = {'time': time}
+
+    # タイムスタンプ情報
+    if 'TimeStamp' in df.columns:
+        eeg_dict['timestamps'] = df['TimeStamp']
+
+    # 各チャネルのデータを取得
+    for col in raw_cols:
+        channel_name = col.replace('RAW_', '')
+        eeg_dict[channel_name] = pd.to_numeric(df[col], errors='coerce').values
+
+    return eeg_dict
+
+
 def get_optics_data(df):
     """
-    OpticsデータをNumPy配列で取得
+    Opticsデータを取得（fNIRS/PPG用）
+
+    Mind Monitor固有の仕様:
+    - Optics1-16カラムを使用
+    - 特定のチャネルマッピング（Optics1=730nm Left等）
 
     Parameters
     ----------
@@ -70,7 +136,11 @@ def get_optics_data(df):
 
 def get_heart_rate_data(df):
     """
-    心拍数データを取得（0を除外）
+    心拍数データを取得
+
+    Mind Monitor固有の仕様:
+    - Heart_Rateカラムを使用
+    - 0値を除外（Mind Monitor特有の動作）
 
     Parameters
     ----------
@@ -82,7 +152,8 @@ def get_heart_rate_data(df):
     hr_dict : dict
         {
             'heart_rate': np.ndarray,
-            'time': np.ndarray
+            'time': np.ndarray,
+            'timestamps': np.ndarray
         }
     """
     df_hr = df[df['Heart_Rate'] > 0].copy()
@@ -98,6 +169,9 @@ def get_data_summary(df):
     """
     データの概要統計を取得
 
+    Mind Monitor固有の仕様:
+    - Time_sec, Optics*, Heart_Rateカラムを使用
+
     Parameters
     ----------
     df : pd.DataFrame
@@ -107,6 +181,14 @@ def get_data_summary(df):
     -------
     summary : dict
         統計情報の辞書
+        {
+            'total_records': int,
+            'duration_sec': float,
+            'duration_min': float,
+            'sampling_rate_hz': float,
+            'optics_channels': int,
+            'valid_heart_rate_records': int
+        }
     """
     duration = df['Time_sec'].max()
 

@@ -1,0 +1,25 @@
+# Titan2 - Muse Headband Data Analysis
+# Python Requirements
+
+# Core Data Processing
+numpy>=1.25,<3
+pandas>=2.0
+
+# Visualization
+matplotlib>=3.7
+seaborn>=0.12
+
+# Scientific Computing
+scipy>=1.11
+
+# EEG Signal Processing
+mne>=1.10
+
+# Jupyter
+jupyterlab>=4.0
+
+# Markdown Table Support
+tabulate>=0.9
+
+# Optional: Japanese Font Support
+# Install system font: sudo apt install fonts-noto-cjk

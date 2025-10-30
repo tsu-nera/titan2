@@ -1,6 +1,8 @@
 """
-fNIRS解析ライブラリ
+fNIRS（functional Near-Infrared Spectroscopy）センサー解析ライブラリ
 Modified Beer-Lambert LawによるHbO/HbR計算
+
+fNIRSセンサーによる近赤外光計測データから脳血流を解析します。
 """
 
 import numpy as np
