@@ -28,7 +28,7 @@ source "$PROJECT_ROOT/titan/bin/activate"
 # CSVファイルパスの取得
 if [ $# -eq 0 ]; then
     # 引数なしの場合、dataディレクトリから最新のCSVを使用
-    CSV_FILE=$(find "$SCRIPT_DIR/data" -name "*.csv" -type f -printf "%T@ %p\n" | sort -rn | head -1 | cut -d' ' -f2-)
+    CSV_FILE=$(find "$PROJECT_ROOT/data" -name "*.csv" -type f -printf "%T@ %p\n" | sort -rn | head -1 | cut -d' ' -f2-)
 
     if [ -z "$CSV_FILE" ]; then
         echo "エラー: data/ ディレクトリにCSVファイルが見つかりません"

@@ -21,8 +21,6 @@
 ├── generate_report.py     # 分析スクリプト（メイン）
 ├── REPORT.md              # 生成されたマークダウンレポート
 ├── README.md              # このファイル
-├── data/                  # 入力データディレクトリ
-│   └── *.csv             # Mind Monitor CSVファイル
 ├── img/                   # 生成された画像ディレクトリ
 │   ├── band_power_time_series.png
 │   ├── band_ratios.png
@@ -32,6 +30,9 @@
 │   └── spectrogram.png
 └── notes/                 # 過去の分析ノート（参考用）
     └── mind_monitor_basic_analysis.ipynb
+
+../../data/                # 入力データディレクトリ（プロジェクトルート）
+└── *.csv                 # Mind Monitor CSVファイル
 ```
 
 ## 使い方
@@ -57,8 +58,8 @@ pip install pandas numpy matplotlib mne scipy tabulate
 # 基本的な使用方法
 python generate_report.py --data <CSVファイルパス>
 
-# 例：このディレクトリから実行
-python generate_report.py --data data/mindMonitor_2025-10-15--17-08-15_2188947289907039573.csv
+# 例：プロジェクトルートのdataディレクトリから読み込み
+python generate_report.py --data ../../data/mindMonitor_2025-10-15--17-08-15_2188947289907039573.csv
 
 # 出力先を指定する場合
 python generate_report.py --data <CSVファイルパス> --output <出力ディレクトリ>
