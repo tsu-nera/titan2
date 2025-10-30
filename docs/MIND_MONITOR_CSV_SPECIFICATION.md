@@ -109,11 +109,69 @@
 | **Muse S/S Gen2** | `Optics1` - `Optics16` | fNIRS（機能的近赤外分光法）+ PPG | 0-32 µA | 心拍数、HRV、脳血流 |
 | **Muse 2** | `PPG1` - `PPG3` | PPGセンサー | 任意単位 | 心拍数測定 |
 
+**Muse S Athena (Gen3) の光学センサー詳細**:
+- **サンプリングレート**: 64 Hz
+- **解像度**: 20-bit
+- **波長**: 730nm (Near-IR) / 850nm (IR) / 660nm (Red) / Ambient
+- **fNIRS配置**: 5-optode bilateral frontal cortex (左右前頭皮質)
+- **チャンネル構成**: 16チャンネル（左内/左外/右内/右外 × 各波長）
+
+#### Opticsチャンネルマッピング (MS-03 Athena)
+
+デバイスの構成によって使用されるチャンネル数が異なります:
+
+**4チャンネル構成**:
+| チャンネル | 波長 | 位置 |
+|----------|------|------|
+| Optics1 | 730nm | Left Inner (左内側) |
+| Optics2 | 730nm | Right Inner (右内側) |
+| Optics3 | 850nm | Left Inner (左内側) |
+| Optics4 | 850nm | Right Inner (右内側) |
+
+**8チャンネル構成**:
+| チャンネル | 波長 | 位置 |
+|----------|------|------|
+| Optics1 | 730nm | Left Outer (左外側) |
+| Optics2 | 730nm | Right Outer (右外側) |
+| Optics3 | 850nm | Left Outer (左外側) |
+| Optics4 | 850nm | Right Outer (右外側) |
+| Optics5 | 730nm | Left Inner (左内側) |
+| Optics6 | 730nm | Right Inner (右内側) |
+| Optics7 | 850nm | Left Inner (左内側) |
+| Optics8 | 850nm | Right Inner (右内側) |
+
+**16チャンネル構成**:
+| チャンネル | 波長 | 位置 |
+|----------|------|------|
+| Optics1 | 730nm | Left Outer (左外側) |
+| Optics2 | 730nm | Right Outer (右外側) |
+| Optics3 | 850nm | Left Outer (左外側) |
+| Optics4 | 850nm | Right Outer (右外側) |
+| Optics5 | 730nm | Left Inner (左内側) |
+| Optics6 | 730nm | Right Inner (右内側) |
+| Optics7 | 850nm | Left Inner (左内側) |
+| Optics8 | 850nm | Right Inner (右内側) |
+| Optics9 | 660nm (Red) | Left Outer (左外側) |
+| Optics10 | 660nm (Red) | Right Outer (右外側) |
+| Optics11 | Ambient | Left Outer (左外側) |
+| Optics12 | Ambient | Right Outer (右外側) |
+| Optics13 | 660nm (Red) | Left Inner (左内側) |
+| Optics14 | 660nm (Red) | Right Inner (右内側) |
+| Optics15 | Ambient | Left Inner (左内側) |
+| Optics16 | Ambient | Right Inner (右内側) |
+
+**fNIRS解析における波長の役割**:
+- **730nm (Near-IR)**: HbO/HbRの測定に使用（短波長）
+- **850nm (IR)**: HbO/HbRの測定に使用（長波長） - Modified Beer-Lambert Lawにより両波長からHbO/HbRを算出
+- **660nm (Red)**: 追加の酸素化指標測定
+- **Ambient**: 環境光ノイズの除去用
+
 **応用例**:
 - 心拍数（HR）の測定
 - 心拍変動（HRV）解析
 - 呼吸数の推定（RSA: Respiratory Sinus Arrhythmia）
 - 脳血流量の推定（fNIRSのみ）
+- 酸素化ヘモグロビン（HbO）・脱酸素化ヘモグロビン（HbR）の測定
 
 ---
 
@@ -172,9 +230,9 @@
 ## データ解析時の注意点
 
 ### 1. サンプリングレート
-- **EEG（脳波）**: 256 Hz
-- **加速度/ジャイロ**: 52 Hz
-- **PPG/心拍**: 64 Hz（Muse S）/ 256 Hz（Muse 2）
+- **EEG（脳波）**: 256 Hz (14-bit resolution on Muse S Athena)
+- **加速度/ジャイロ**: 52 Hz (16-bit resolution)
+- **PPG/fNIRS**: 64 Hz (20-bit resolution on Muse S Athena) / 256 Hz（Muse 2）
 
 CSVでは全データが統合されているため、サンプリングレートが異なるデータが混在しています。
 

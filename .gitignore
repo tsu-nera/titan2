@@ -20,3 +20,4 @@ resources/creds.edn
 titan
 .ipynb_checkpoints
 __pycache__/
+output/
