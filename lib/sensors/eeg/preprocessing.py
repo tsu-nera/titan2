@@ -13,6 +13,33 @@ warnings.filterwarnings('ignore')
 mne.set_log_level('ERROR')
 
 
+def filter_signal_quality(df, require_headband=True, require_all_good=True):
+    """HeadBandOn/HSIの品質に基づいてデータをフィルタ"""
+
+    quality_mask = pd.Series(True, index=df.index)
+
+    if require_headband and 'HeadBandOn' in df.columns:
+        headband_on = pd.to_numeric(df['HeadBandOn'], errors='coerce') == 1
+        quality_mask &= headband_on.fillna(False)
+
+    hsi_cols = [c for c in df.columns if c.startswith('HSI_')]
+    if hsi_cols:
+        hsi_values = df[hsi_cols].apply(pd.to_numeric, errors='coerce')
+        if require_all_good:
+            quality_mask &= hsi_values.eq(1).all(axis=1)
+        else:
+            quality_mask &= hsi_values.le(2).all(axis=1)
+
+    if quality_mask.any():
+        filtered = df.loc[quality_mask].copy()
+        if filtered.empty:
+            filtered = df.copy()
+    else:
+        filtered = df.copy()
+
+    return filtered, quality_mask
+
+
 def prepare_mne_raw(df, sfreq=None):
     """
     MNE RawArrayの準備
@@ -39,9 +66,11 @@ def prepare_mne_raw(df, sfreq=None):
     if not raw_cols:
         return None
 
+    df_filtered, _ = filter_signal_quality(df)
+
     # 数値変換と前処理
-    numeric = df[raw_cols].apply(pd.to_numeric, errors='coerce')
-    frame = pd.concat([df['TimeStamp'], numeric], axis=1)
+    numeric = df_filtered[raw_cols].apply(pd.to_numeric, errors='coerce')
+    frame = pd.concat([df_filtered['TimeStamp'], numeric], axis=1)
     frame = frame.set_index('TimeStamp')
 
     # 重複タイムスタンプは平均化

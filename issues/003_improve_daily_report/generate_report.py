@@ -27,6 +27,7 @@ from lib import (
     load_mind_monitor_csv,
     calculate_band_statistics,
     prepare_mne_raw,
+    filter_signal_quality,
     calculate_psd,
     calculate_spectrogram,
     calculate_band_ratios,
@@ -34,6 +35,7 @@ from lib import (
     calculate_paf_time_evolution,
     plot_band_power_time_series,
     plot_psd,
+    plot_psd_time_series,
     plot_spectrogram,
     plot_band_ratios,
     plot_paf,
@@ -133,7 +135,12 @@ def generate_markdown_report(data_path, output_dir, results):
 """
 
     # バンドパワー分析
-    band_power_keys = {'band_statistics', 'band_power_img', 'psd_img', 'spectrogram_img'}
+    band_power_keys = {
+        'band_statistics',
+        'band_power_img',
+        'psd_img',
+        'spectrogram_img'
+    }
     if any(key in results for key in band_power_keys):
         report += "## バンドパワー分析\n\n"
 
@@ -145,6 +152,9 @@ def generate_markdown_report(data_path, output_dir, results):
         if 'band_power_img' in results:
             report += "### バンドパワーの時間推移\n\n"
             report += f"![バンドパワー時系列](img/{results['band_power_img']})\n\n"
+            if 'band_power_quality_ratio' in results:
+                ratio = results['band_power_quality_ratio'] * 100
+                report += f"HeadBandOn/HSI良好データ使用率: {ratio:.1f}%\n\n"
             report += "Alpha波が高いとリラックス状態、Beta波が高いと集中状態を示します。\n\n"
 
         if 'psd_img' in results:
@@ -329,10 +339,20 @@ def run_full_analysis(data_path, output_dir):
     except KeyError as exc:
         print(f'警告: fNIRSデータを処理できませんでした ({exc})')
 
-    # バンドパワー時系列
+    # バンドパワー時系列（Museアプリ風）
     print('プロット中: バンドパワー時系列...')
-    plot_band_power_time_series(df, img_path=img_dir / 'band_power_time_series.png')
+    df_quality, quality_mask = filter_signal_quality(df)
+    df_for_band = df_quality if not df_quality.empty else df
+    plot_band_power_time_series(
+        df_for_band,
+        img_path=img_dir / 'band_power_time_series.png',
+        rolling_window=200,
+        resample_interval='2S',
+        smooth_window=9,
+        clip_percentile=98.0
+    )
     results['band_power_img'] = 'band_power_time_series.png'
+    results['band_power_quality_ratio'] = float(quality_mask.mean())
 
     # MNE RAW準備
     print('準備中: MNE RAWデータ...')
@@ -342,6 +362,22 @@ def run_full_analysis(data_path, output_dir):
         raw = mne_dict['raw']
         print(f'検出されたチャネル: {mne_dict["channels"]}')
         print(f'推定サンプリングレート: {mne_dict["sfreq"]:.2f} Hz')
+
+        # PSD時系列
+        print('プロット中: PSDの時間推移...')
+        psd_time_img_name = 'psd_time_series.png'
+        plot_psd_time_series(
+            raw,
+            channels=mne_dict['channels'],
+            img_path=img_dir / psd_time_img_name,
+            fmin=1.0,
+            fmax=40.0,
+            window_sec=8.0,
+            step_sec=2.0,
+            clip_percentile=90.0,
+            smooth_window=7
+        )
+        results['psd_time_series_img'] = psd_time_img_name
 
         # PSD計算
         print('計算中: パワースペクトル密度...')

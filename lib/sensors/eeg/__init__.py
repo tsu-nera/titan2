@@ -7,7 +7,7 @@ Muse脳波データの周波数バンド解析、PSD、PAF計算、可視化
 from .constants import FREQ_BANDS, DEFAULT_SFREQ
 
 # 前処理
-from .preprocessing import prepare_mne_raw
+from .preprocessing import prepare_mne_raw, filter_signal_quality
 
 # 周波数解析
 from .frequency import calculate_psd, calculate_spectrogram
@@ -25,6 +25,7 @@ from .paf import calculate_paf, calculate_paf_time_evolution
 from .visualization import (
     plot_band_power_time_series,
     plot_psd,
+    plot_psd_time_series,
     plot_spectrogram,
     plot_band_ratios,
     plot_paf,
@@ -41,6 +42,7 @@ __all__ = [
     'DEFAULT_SFREQ',
     # 前処理
     'prepare_mne_raw',
+    'filter_signal_quality',
     # 周波数解析
     'calculate_psd',
     'calculate_spectrogram',
@@ -54,6 +56,7 @@ __all__ = [
     # 可視化
     'plot_band_power_time_series',
     'plot_psd',
+    'plot_psd_time_series',
     'plot_spectrogram',
     'plot_band_ratios',
     'plot_paf',

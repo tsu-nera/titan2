@@ -8,56 +8,123 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 from .constants import FREQ_BANDS
+from .frequency import calculate_psd
 
 
-def plot_band_power_time_series(df, bands=None, img_path=None, rolling_window=50):
+def plot_band_power_time_series(
+    df,
+    bands=None,
+    img_path=None,
+    rolling_window=50,
+    resample_interval='2S',
+    smooth_window=5,
+    clip_percentile=None
+):
     """
-    バンドパワーの時系列推移をプロット
+    Plot band power time series in Muse App style
 
     Parameters
     ----------
     df : pd.DataFrame
-        Mind Monitorデータフレーム（バンドパワー列を含む）
+        Mind Monitor dataframe with band power columns
     bands : list, optional
-        バンド名リスト
+        List of band names
     img_path : str or Path, optional
-        保存先パス（Noneの場合は保存しない）
+        Save path (None to skip saving)
     rolling_window : int
-        移動平均のウィンドウサイズ
+        Window size for moving average
+    resample_interval : str, optional
+        Resampling interval (e.g., '2S') for smoothing
+    smooth_window : int, optional
+        Rolling window size (samples) for additional smoothing (centered)
+    clip_percentile : float, optional
+        Upper percentile threshold to clip extreme spikes (None to disable)
 
     Returns
     -------
     fig : matplotlib.figure.Figure
-        生成された図オブジェクト
+        Generated figure object
     """
     if bands is None:
         bands = list(FREQ_BANDS.keys())
 
-    rolling = df.copy()
+    if 'TimeStamp' in df.columns:
+        time_values = pd.to_datetime(df['TimeStamp'])
+    else:
+        time_values = pd.to_datetime(np.arange(len(df)), unit='s')
+
+    band_data = pd.DataFrame(index=time_values)
 
     for band in bands:
         cols = [c for c in df.columns if c.startswith(f'{band}_')]
         if not cols:
             continue
         numeric = df[cols].apply(pd.to_numeric, errors='coerce')
-        rolling[band] = numeric.mean(axis=1).rolling(
-            window=rolling_window, min_periods=1
-        ).mean()
+        band_series = numeric.mean(axis=1)
+        band_series = band_series.rolling(window=rolling_window, min_periods=1).mean()
+        band_data[band] = band_series.values
 
-    fig, ax = plt.subplots(figsize=(14, 6))
-    colors = [FREQ_BANDS[band][2] for band in bands if band in FREQ_BANDS]
+    band_data = band_data.sort_index()
 
-    for band, color in zip(bands, colors):
-        if band in rolling.columns:
-            ax.plot(df['TimeStamp'], rolling[band], label=band, color=color, linewidth=2)
+    if band_data.empty or band_data.shape[1] == 0:
+        raise ValueError('指定したバンドのデータが見つかりません。')
 
-    ax.set_title('バンドパワーの時間推移', fontsize=14, fontweight='bold')
-    ax.set_xlabel('時刻')
-    ax.set_ylabel('パワー (相対値)')
-    ax.legend(loc='upper right', fontsize=11)
-    ax.grid(True, alpha=0.3)
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-    fig.autofmt_xdate()
+    band_data = band_data.interpolate(method='time').ffill().bfill()
+
+    if resample_interval:
+        band_data = band_data.resample(resample_interval).mean().interpolate('time')
+
+    if clip_percentile is not None:
+        upper_bounds = band_data.quantile(clip_percentile / 100.0)
+        band_data = band_data.clip(upper=upper_bounds, axis=1)
+
+    if smooth_window and smooth_window > 1:
+        band_data = band_data.rolling(window=int(smooth_window), min_periods=1, center=True).mean()
+
+    # Muse-style visual settings
+    fig, ax = plt.subplots(figsize=(14, 8))
+
+    # Convert time axis to minutes (elapsed time from start)
+    if len(band_data.index) == 0:
+        raise ValueError('バンドデータの時間軸が空です。')
+
+    elapsed_minutes = (band_data.index - band_data.index[0]).total_seconds() / 60.0
+
+    plot_bands = [band for band in bands if band in band_data.columns]
+    color_cycle = plt.get_cmap('tab10')
+
+    for idx, band in enumerate(plot_bands):
+        default_color = color_cycle(idx % 10)
+        color = FREQ_BANDS.get(band, (None, None, default_color))[2] if band in FREQ_BANDS else default_color
+        ax.plot(
+            elapsed_minutes,
+            band_data[band],
+            label=band,
+            color=color,
+            linewidth=2.5,
+            alpha=0.9
+        )
+
+    ax.set_xlabel('Time (min)', fontsize=12)
+
+    # Set minute-based tick intervals
+    max_minutes = elapsed_minutes.max() if len(elapsed_minutes) else 0
+    if max_minutes <= 5:
+        tick_interval = 1  # <= 5 min: 1-min intervals
+    elif max_minutes <= 15:
+        tick_interval = 2  # <= 15 min: 2-min intervals
+    else:
+        tick_interval = 5  # > 15 min: 5-min intervals
+
+    ticks = np.arange(0, max_minutes + tick_interval, tick_interval) if max_minutes else np.array([0])
+    ax.set_xticks(ticks)
+    ax.set_xlim(0, max_minutes if max_minutes else 1)
+
+    ax.set_title('Brainwave Powerbands', fontsize=16, fontweight='bold', pad=20)
+    ax.set_ylabel('Power (μV²)', fontsize=12)
+    ax.legend(loc='upper right', fontsize=11, framealpha=0.8)
+    ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
+
     plt.tight_layout()
 
     if img_path:
@@ -110,6 +177,157 @@ def plot_psd(psd_dict, bands=None, img_path=None):
     ax.set_title('脳波のパワースペクトル密度（PSD）', fontsize=14, fontweight='bold')
     ax.grid(True, which='both', alpha=0.3)
     ax.legend(loc='upper right', fontsize=10)
+    plt.tight_layout()
+
+    if img_path:
+        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    return fig
+
+
+def plot_psd_time_series(
+    raw,
+    channels=None,
+    img_path=None,
+    fmin=1.0,
+    fmax=40.0,
+    window_sec=8.0,
+    step_sec=2.0,
+    clip_percentile=95.0,
+    smooth_window=3
+):
+    """
+    PSDの時間推移（滑動Welch法）をプロット
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        EEGのRawオブジェクト
+    channels : list[str], optional
+        プロット対象チャネル（Noneの場合は全チャネル）
+    img_path : str or Path, optional
+        保存先パス（Noneで保存をスキップ）
+    fmin : float
+        集計するPSDの最小周波数（Hz）
+    fmax : float
+        集計するPSDの最大周波数（Hz）
+    window_sec : float
+        Welch法の窓長（秒）
+    step_sec : float
+        計算ステップ間隔（秒）
+    clip_percentile : float
+        外れ値抑制のための上側パーセンタイル（Noneで無効）
+    smooth_window : int
+        時系列平滑化の窓幅（1で無効）
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        生成された図オブジェクト
+    """
+
+    sfreq = raw.info['sfreq']
+    total_duration = raw.times[-1]
+
+    if channels is None:
+        channels = raw.ch_names
+    else:
+        missing = [ch for ch in channels if ch not in raw.ch_names]
+        if missing:
+            raise ValueError(f'Rawオブジェクトに存在しないチャネル: {missing}')
+
+    window_sec = min(window_sec, total_duration)
+    if window_sec <= 0:
+        raise ValueError('window_sec が無効です。計測時間より短い値を指定してください。')
+
+    step_sec = max(step_sec, 1.0 / sfreq)
+
+    psd_records = []
+    time_points = []
+
+    current_start = 0.0
+    picks = channels
+
+    while current_start <= total_duration:
+        current_end = min(current_start + window_sec, total_duration)
+        if current_end - current_start <= 0:
+            break
+
+        segment = raw.copy().pick(picks=picks).crop(
+            tmin=current_start,
+            tmax=current_end,
+            include_tmax=True
+        )
+
+        psd_dict = calculate_psd(segment, fmin=fmin, fmax=fmax)
+        freqs = psd_dict['freqs']
+        band_mask = (freqs >= fmin) & (freqs <= fmax)
+        if not np.any(band_mask):
+            current_start += step_sec
+            continue
+
+        band_psd = psd_dict['psds'][:, band_mask].mean(axis=1)
+        psd_records.append(band_psd)
+
+        center_time = current_start + (current_end - current_start) / 2.0
+        time_points.append(center_time)
+
+        if current_end >= total_duration:
+            break
+        current_start += step_sec
+
+    if not psd_records:
+        raise ValueError('PSDの計算に失敗しました。周波数範囲や窓長を確認してください。')
+
+    psd_array = np.vstack(psd_records)
+    elapsed_minutes = np.array(time_points) / 60.0
+
+    psd_df = pd.DataFrame(psd_array, columns=channels, index=elapsed_minutes)
+
+    if clip_percentile is not None:
+        upper_bounds = psd_df.quantile(clip_percentile / 100.0)
+        psd_df = psd_df.clip(upper=upper_bounds, axis=1)
+
+    if smooth_window and smooth_window > 1:
+        psd_df = psd_df.rolling(window=int(smooth_window), min_periods=1, center=True).median()
+
+    psd_processed = psd_df.to_numpy()
+    elapsed_minutes = psd_df.index.to_numpy()
+
+    fig, ax = plt.subplots(figsize=(14, 8))
+
+    color_cycle = plt.get_cmap('tab10')
+    channel_labels = [channel.replace('RAW_', '') for channel in channels]
+
+    for idx, channel in enumerate(channel_labels):
+        ax.plot(
+            elapsed_minutes,
+            psd_processed[:, idx],
+            label=channel,
+            color=color_cycle(idx % 10),
+            linewidth=2.5,
+            alpha=0.9
+        )
+
+    ax.set_xlabel('Time (min)', fontsize=12)
+    ax.set_ylabel('PSD (μV²/Hz)', fontsize=12)
+    ax.set_title('PSDの時間推移', fontsize=16, fontweight='bold', pad=20)
+    ax.legend(loc='upper right', fontsize=11, framealpha=0.8)
+    ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
+
+    max_minutes = elapsed_minutes.max()
+    if max_minutes <= 5:
+        tick_interval = 1
+    elif max_minutes <= 15:
+        tick_interval = 2
+    else:
+        tick_interval = 5
+
+    ticks = np.arange(0, max_minutes + tick_interval, tick_interval)
+    ax.set_xticks(ticks)
+    ax.set_xlim(0, max_minutes)
+
     plt.tight_layout()
 
     if img_path:

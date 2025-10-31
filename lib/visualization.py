@@ -71,7 +71,7 @@ def plot_fnirs(fnirs_results, figsize=(14, 10)):
 def plot_fnirs_muse_style(fnirs_results, figsize=(14, 8)):
     """
     fNIRS時系列データをMuse App風に可視化
-    4つの折れ線を重ねて表示（Left HbR, Right HbR, Left HbO, Right HbO）
+    4つの折れ線を重ねて表示（Left HbR, Right HbR, Left HbO, Right HbO）hl
 
     Parameters
     ----------
