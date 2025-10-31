@@ -13,14 +13,26 @@ warnings.filterwarnings('ignore')
 mne.set_log_level('ERROR')
 
 
-def filter_signal_quality(df, require_headband=True, require_all_good=True):
-    """HeadBandOn/HSIの品質に基づいてデータをフィルタ"""
+def filter_eeg_quality(df, require_all_good=False):
+    """
+    EEG固有のHSI品質に基づいてデータをフィルタ
 
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Mind Monitorデータフレーム（HeadBandOnで事前フィルタ済みを推奨）
+    require_all_good : bool, default False
+        True: 全HSIチャネルが1.0 (Good) の行のみ抽出（高精度分析用）
+        False: 全HSIチャネルが≤2.0 (Good/Medium) の行を抽出（日常分析用、推奨）
+
+    Returns
+    -------
+    filtered : pd.DataFrame
+        フィルタ後のデータフレーム
+    quality_mask : pd.Series
+        品質マスク（Trueが良好な行）
+    """
     quality_mask = pd.Series(True, index=df.index)
-
-    if require_headband and 'HeadBandOn' in df.columns:
-        headband_on = pd.to_numeric(df['HeadBandOn'], errors='coerce') == 1
-        quality_mask &= headband_on.fillna(False)
 
     hsi_cols = [c for c in df.columns if c.startswith('HSI_')]
     if hsi_cols:
@@ -47,7 +59,7 @@ def prepare_mne_raw(df, sfreq=None):
     Parameters
     ----------
     df : pd.DataFrame
-        Mind Monitorデータフレーム（RAW_*列を含む）
+        Mind Monitorデータフレーム（RAW_*列を含む、HeadBandOnで事前フィルタ済みを推奨）
     sfreq : float, optional
         サンプリングレート（Noneの場合は自動推定）
 
@@ -66,7 +78,7 @@ def prepare_mne_raw(df, sfreq=None):
     if not raw_cols:
         return None
 
-    df_filtered, _ = filter_signal_quality(df)
+    df_filtered, _ = filter_eeg_quality(df)
 
     # 数値変換と前処理
     numeric = df_filtered[raw_cols].apply(pd.to_numeric, errors='coerce')

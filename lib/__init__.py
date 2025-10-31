@@ -33,7 +33,7 @@ from .visualization import (
 from .sensors.eeg import (
     calculate_band_statistics,
     prepare_mne_raw,
-    filter_signal_quality,
+    filter_eeg_quality,
     calculate_psd,
     calculate_spectrogram,
     calculate_band_ratios,
@@ -85,7 +85,7 @@ __all__ = [
     'get_eeg_data',
     'calculate_band_statistics',
     'prepare_mne_raw',
-    'filter_signal_quality',
+    'filter_eeg_quality',
     'calculate_psd',
     'calculate_spectrogram',
     'calculate_band_ratios',

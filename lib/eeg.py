@@ -16,7 +16,7 @@ from .sensors.eeg.frontal_theta import (
     FrontalThetaResult,
     calculate_frontal_theta,
 )
-from .sensors.eeg.preprocessing import filter_signal_quality
+from .sensors.eeg.preprocessing import filter_eeg_quality
 
 if TYPE_CHECKING:
     import mne

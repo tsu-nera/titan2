@@ -27,7 +27,7 @@ from lib import (
     load_mind_monitor_csv,
     calculate_band_statistics,
     prepare_mne_raw,
-    filter_signal_quality,
+    filter_eeg_quality,
     calculate_psd,
     calculate_spectrogram,
     calculate_band_ratios,
@@ -323,7 +323,7 @@ def run_full_analysis(data_path, output_dir):
 
     # データ読み込み
     print(f'Loading: {data_path}')
-    df = load_mind_monitor_csv(data_path, quality_filter=False)
+    df = load_mind_monitor_csv(data_path, filter_headband=False)
 
     # データ情報を記録
     results['data_info'] = {
@@ -369,7 +369,7 @@ def run_full_analysis(data_path, output_dir):
 
     # バンドパワー時系列（Museアプリ風）
     print('プロット中: バンドパワー時系列...')
-    df_quality, quality_mask = filter_signal_quality(df)
+    df_quality, quality_mask = filter_eeg_quality(df)
     df_for_band = df_quality if not df_quality.empty else df
     plot_band_power_time_series(
         df_for_band,

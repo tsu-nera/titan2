@@ -13,21 +13,22 @@ from pathlib import Path
 from ..sensors.eeg.constants import DEFAULT_SFREQ
 
 
-def load_mind_monitor_csv(csv_path, quality_filter=True):
+def load_mind_monitor_csv(csv_path, filter_headband=True):
     """
-    Mind Monitor CSVファイルを読み込む
+    Mind Monitor CSVファイルを読み込む（全センサー共通の基本前処理）
 
     Mind Monitor固有の仕様:
     - TimeStampカラムの存在を前提
-    - HeadBandOnによる品質フィルタリング
+    - HeadBandOnによるデバイス装着状態フィルタリング（全センサー共通）
     - Time_sec相対時間カラムの自動追加
 
     Parameters
     ----------
     csv_path : str or Path
         CSVファイルのパス
-    quality_filter : bool
-        True の場合、HeadBandOn=1 のデータのみ抽出
+    filter_headband : bool
+        True の場合、HeadBandOn=1（装着中）のデータのみ抽出
+        全センサー（EEG, Optics, Heart Rate等）に共通のフィルタ
 
     Returns
     -------
@@ -42,8 +43,8 @@ def load_mind_monitor_csv(csv_path, quality_filter=True):
     # 相対時間 (秒) を計算
     df['Time_sec'] = (df['TimeStamp'] - df['TimeStamp'].iloc[0]).dt.total_seconds()
 
-    # 品質フィルタリング
-    if quality_filter:
+    # HeadBandOnフィルタリング（全センサー共通）
+    if filter_headband:
         df = df[df['HeadBandOn'] == 1].copy()
 
     return df
