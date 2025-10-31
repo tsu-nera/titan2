@@ -42,6 +42,8 @@ from lib import (
     plot_paf_time_evolution,
     get_psd_peak_frequencies,
     setup_japanese_font,
+    calculate_frontal_theta,
+    plot_frontal_theta,
     get_optics_data,
     analyze_fnirs,
     plot_fnirs_muse_style,
@@ -123,8 +125,6 @@ def generate_markdown_report(data_path, output_dir, results):
 
     report = f"""# Muse脳波データ分析レポート
 
-## メタデータ
-
 - **生成日時**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 - **データファイル**: `{data_path.name}`
 - **記録時間**: {start_time} ~ {end_time}
@@ -136,7 +136,6 @@ def generate_markdown_report(data_path, output_dir, results):
 
     # バンドパワー分析
     band_power_keys = {
-        'band_statistics',
         'band_power_img',
         'psd_img',
         'spectrogram_img'
@@ -144,27 +143,16 @@ def generate_markdown_report(data_path, output_dir, results):
     if any(key in results for key in band_power_keys):
         report += "## バンドパワー分析\n\n"
 
-        if 'band_statistics' in results:
-            report += "### 周波数バンド統計\n\n"
-            report += results['band_statistics'].to_markdown(index=False, floatfmt='.4f')
-            report += "\n\n"
-
         if 'band_power_img' in results:
             report += "### バンドパワーの時間推移\n\n"
             report += f"![バンドパワー時系列](img/{results['band_power_img']})\n\n"
             if 'band_power_quality_ratio' in results:
                 ratio = results['band_power_quality_ratio'] * 100
                 report += f"HeadBandOn/HSI良好データ使用率: {ratio:.1f}%\n\n"
-            report += "Alpha波が高いとリラックス状態、Beta波が高いと集中状態を示します。\n\n"
 
         if 'psd_img' in results:
             report += "### パワースペクトル密度（PSD）\n\n"
             report += f"![PSD](img/{results['psd_img']})\n\n"
-
-            if 'psd_peaks' in results:
-                report += "#### 各バンドのピーク周波数\n\n"
-                report += results['psd_peaks'].to_markdown(index=False, floatfmt='.2f')
-                report += "\n\n"
 
         if 'spectrogram_img' in results:
             report += "### スペクトログラム\n\n"
@@ -207,6 +195,27 @@ def generate_markdown_report(data_path, output_dir, results):
             report += results['spike_analysis'].to_markdown(index=False, floatfmt='.2f')
             report += "\n\n"
 
+    # Frontal Midline Theta 分析
+    fmtheta_keys = {'frontal_theta_img', 'frontal_theta_stats', 'frontal_theta_increase'}
+    if any(key in results for key in fmtheta_keys):
+        report += "## Frontal Midline Theta分析\n\n"
+
+        if 'frontal_theta_img' in results:
+            report += "### Fmθの時間推移\n\n"
+            report += f"![Frontal Midline Theta](img/{results['frontal_theta_img']})\n\n"
+
+        if 'frontal_theta_stats' in results:
+            report += "### 指標サマリー\n\n"
+            report += results['frontal_theta_stats'].to_markdown(index=False, floatfmt='.3f')
+            report += "\n\n"
+
+        if 'frontal_theta_increase' in results:
+            inc = results['frontal_theta_increase']
+            if pd.notna(inc):
+                report += f"- セッション後半の平均Fmθは前半比で {inc:+.1f}% 変化しました。\n\n"
+            else:
+                report += "- セッション前後半の比較指標を算出できませんでした。\n\n"
+
     # PAF分析
     paf_keys = {'paf_img', 'paf_summary', 'iaf', 'paf_time_img', 'paf_time_stats'}
     if any(key in results for key in paf_keys):
@@ -224,28 +233,6 @@ def generate_markdown_report(data_path, output_dir, results):
             iaf_data = results['iaf']
             report += f"**Individual Alpha Frequency (IAF)**: {iaf_data['value']:.2f} ± {iaf_data['std']:.2f} Hz\n\n"
 
-        if 'paf_time_img' in results:
-            report += "### PAFの時間的変化\n\n"
-            report += f"![PAF時間推移](img/{results['paf_time_img']})\n\n"
-
-        if 'paf_time_stats' in results:
-            stats = results['paf_time_stats']
-            report += "#### PAF統計\n\n"
-            for key, value in stats.items():
-                report += f"- **{key}**: {value:.2f}\n"
-
-            cv = stats['変動係数 (%)']
-            if cv < 2:
-                stability = '非常に安定'
-            elif cv < 5:
-                stability = '安定'
-            elif cv < 10:
-                stability = 'やや変動あり'
-            else:
-                stability = '変動大'
-
-            report += f"\n**PAF安定性評価**: {stability}\n\n"
-
     # fNIRS分析
     if "fnirs_stats" in results or "fnirs_img" in results:
         report += "## fNIRS分析\n\n"
@@ -258,7 +245,6 @@ def generate_markdown_report(data_path, output_dir, results):
         if "fnirs_img" in results:
             report += "### HbO/HbRの時系列\n\n"
             report += f"![fNIRS時系列](img/{results['fnirs_img']})\n\n"
-            report += "HbOの上昇は局所的な血流増加、HbRの低下は酸素消費の増大を示唆します。\n\n"
 
     # ファイルに書き込み
     with open(report_path, 'w', encoding='utf-8') as f:
@@ -279,7 +265,7 @@ def run_full_analysis(data_path, output_dir):
         出力ディレクトリ
     """
     print('='*60)
-    print('Muse脳波データ基本分析（リファクタリング版）')
+    print('Muse脳波データ基本分析')
     print('='*60)
     print()
 
@@ -429,6 +415,21 @@ def run_full_analysis(data_path, output_dir):
             plot_paf_time_evolution(paf_time_dict, df, paf_dict, img_path=img_dir / 'paf_time_evolution.png')
             results['paf_time_img'] = 'paf_time_evolution.png'
             results['paf_time_stats'] = paf_time_dict['stats']
+
+    # Frontal Midline Theta解析
+    try:
+        print('計算中: Frontal Midline Theta...')
+        fmtheta_result = calculate_frontal_theta(df, raw=raw if mne_dict else None)
+        print('プロット中: Frontal Midline Theta...')
+        plot_frontal_theta(
+            fmtheta_result,
+            img_path=img_dir / 'frontal_midline_theta.png'
+        )
+        results['frontal_theta_img'] = 'frontal_midline_theta.png'
+        results['frontal_theta_stats'] = fmtheta_result.statistics
+        results['frontal_theta_increase'] = fmtheta_result.metadata.get('increase_rate_percent')
+    except Exception as exc:
+        print(f'警告: Fmθ解析に失敗しました ({exc})')
 
     # バンド比率
     print('計算中: バンド比率...')

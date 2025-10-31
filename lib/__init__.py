@@ -48,7 +48,10 @@ from .sensors.eeg import (
     plot_paf_time_evolution,
     get_psd_peak_frequencies,
     setup_japanese_font,
-    FREQ_BANDS
+    FREQ_BANDS,
+    FrontalThetaResult,
+    calculate_frontal_theta,
+    plot_frontal_theta,
 )
 
 __all__ = [
@@ -92,4 +95,7 @@ __all__ = [
     'get_psd_peak_frequencies',
     'setup_japanese_font',
     'FREQ_BANDS',
+    'FrontalThetaResult',
+    'calculate_frontal_theta',
+    'plot_frontal_theta',
 ]

@@ -36,19 +36,20 @@
 
 ### Phase 1: コア機能の追加（優先度：高）
 
-#### 1.1 Frontal Midline Theta (Fmθ) 分析
+#### 1.1 Frontal Midline Theta (Fmθ) 分析 ✅（2025-10-31完了）
 **目的**: 集中瞑想で最も重要な指標を追加
 
 **実装内容**:
-- AF7/AF8チャネルの6-7Hz帯域パワーを抽出
-- Fmθの時間推移をプロット
-- セッション平均、中央値、標準偏差を算出
-- Fmθ増加率（前半vs後半）を計算
+- AF7/AF8チャネルをMNE-Pythonで6-7Hzにバンドパスし、Hilbert包絡からFmθパワーを算出
+- Fmθの時間推移をプロット（英語ラベルで出力）
+- セッション平均、中央値、標準偏差、前半・後半平均および増加率を算出
+- レポートに新セクションを追加し統計値・グラフを掲載
 
 **成果物**:
-- `lib/eeg.py`: `calculate_frontal_theta()` 関数
-- `lib/eeg.py`: `plot_frontal_theta()` 関数
-- レポートに新セクション「Frontal Midline Theta分析」
+- `lib/sensors/eeg/frontal_theta.py`: `calculate_frontal_theta()`, `plot_frontal_theta()`
+- `lib/sensors/eeg/__init__.py`, `lib/__init__.py`: Fmθ APIの公開
+- `issues/003_improve_daily_report/generate_report.py`: Fmθ解析の組み込み
+- `issues/003_improve_daily_report/REPORT.md`: 「Frontal Midline Theta分析」セクションを追加し最新グラフを反映
 
 #### 1.2 時間セグメント分析
 **目的**: セッション中の集中度の変化を可視化

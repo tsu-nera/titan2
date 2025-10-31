@@ -36,6 +36,13 @@ from .visualization import (
 # ユーティリティ
 from .utils import get_psd_peak_frequencies
 
+# Fmθ解析
+from .frontal_theta import (
+    FrontalThetaResult,
+    calculate_frontal_theta,
+    plot_frontal_theta,
+)
+
 __all__ = [
     # 定数
     'FREQ_BANDS',
@@ -64,4 +71,8 @@ __all__ = [
     'setup_japanese_font',
     # ユーティリティ
     'get_psd_peak_frequencies',
+    # Fmθ解析
+    'FrontalThetaResult',
+    'calculate_frontal_theta',
+    'plot_frontal_theta',
 ]

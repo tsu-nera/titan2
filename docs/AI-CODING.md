@@ -62,6 +62,10 @@ Mind Monitor (Muse Headband用アプリ) のCSVデータを扱う場合は、以
 
 **仕様書**: [docs/MIND_MONITOR_CSV_SPECIFICATION.md](MIND_MONITOR_CSV_SPECIFICATION.md)
 
+#### 内部ドキュメント
+- [docs/MIND_MONITOR_CSV_SPECIFICATION.md](MIND_MONITOR_CSV_SPECIFICATION.md)
+- [docs/MUSE_EEG_SPEC.md](MUSE_EEG_SPEC.md)
+
 #### 含まれる情報
 - 全カラムの詳細仕様（単位、範囲、説明）
 - センサー位置と脳波周波数帯域の説明
@@ -95,19 +99,6 @@ titan2/
 
 ---
 
-## テスト
-
-### 実行方法
-```bash
-# 全テスト実行（将来的に追加予定）
-pytest
-
-# 特定テスト実行
-pytest tests/test_specific.py
-```
-
----
-
 ## コミットメッセージ
 
 ### フォーマット
@@ -127,36 +118,14 @@ pytest tests/test_specific.py
 
 ---
 
-## 解析関連
+## 実装方針メモ
 
-### 実装済み機能
-- **呼吸数推定**: `scripts/respiratory_rate_estimation.py`
-  - 心拍変動（HRV）からRSA解析により呼吸数を推定
-  - FFTおよびWelch法による周波数解析
-
-### データ品質管理
-Mind Monitorデータのフィルタリング例：
-```python
-# 良質なデータのみを抽出
-df_quality = df[
-    (df['HeadBandOn'] == 1) &  # 装着中
-    (df['HSI_TP9'] == 1) &      # 全センサー良好
-    (df['HSI_AF7'] == 1) &
-    (df['HSI_AF8'] == 1) &
-    (df['HSI_TP10'] == 1)
-]
-```
-
----
+- EEG処理や信号解析でMNE-Pythonに相当機能が存在する場合は、自前実装よりもMNEの公式APIを優先して利用する。
+- 既存コードに独自アルゴリズムが残っている場合も、検証を行いながら段階的にMNE-Pythonの機能へ置き換えることを検討する。
+- レポート用の図版・画像出力ではラベルや注記に英語を用い、国際的な再利用性を確保する（必要に応じて本文で日本語解説を補足する）。
 
 ## 参考資料
 
 ### 外部ドキュメント
 - [Mind Monitor FAQ](https://mind-monitor.com/FAQ.php)
 - [Muse Developer Docs](https://choosemuse.com/pages/developers)
-- [EEG Wikipedia](https://en.wikipedia.org/wiki/Electroencephalography)
-
----
-
-**最終更新**: 2025-10-26
-**バージョン**: 1.0
