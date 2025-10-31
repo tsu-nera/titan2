@@ -54,6 +54,12 @@ from .sensors.eeg import (
     plot_frontal_theta,
 )
 
+from .eeg import (
+    SegmentAnalysisResult,
+    calculate_segment_analysis,
+    plot_segment_comparison,
+)
+
 __all__ = [
     # loaders
     'load_mind_monitor_csv',
@@ -98,4 +104,8 @@ __all__ = [
     'FrontalThetaResult',
     'calculate_frontal_theta',
     'plot_frontal_theta',
+    # high-level eeg utilities
+    'SegmentAnalysisResult',
+    'calculate_segment_analysis',
+    'plot_segment_comparison',
 ]

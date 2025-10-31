@@ -44,6 +44,8 @@ from lib import (
     setup_japanese_font,
     calculate_frontal_theta,
     plot_frontal_theta,
+    calculate_segment_analysis,
+    plot_segment_comparison,
     get_optics_data,
     analyze_fnirs,
     plot_fnirs_muse_style,
@@ -134,21 +136,56 @@ def generate_markdown_report(data_path, output_dir, results):
 
 """
 
-    # バンドパワー分析
+    # ========================================
+    # 分析サマリー
+    # ========================================
+    report += "## 📊 分析サマリー\n\n"
+
+    # セッション総合評価
+    if 'band_ratios_stats' in results:
+        report += "### セッション総合評価\n\n"
+        for _, row in results['band_ratios_stats'].iterrows():
+            ratio_name = row['指標']
+            avg_value = row['平均値']
+
+            if 'リラックス' in ratio_name:
+                level = 'とても高い' if avg_value > 2.0 else '高い' if avg_value > 1.0 else '普通'
+            elif '集中' in ratio_name:
+                level = 'とても高い' if avg_value > 2.0 else '高い' if avg_value > 1.0 else '普通'
+            elif '瞑想' in ratio_name:
+                level = '深い' if avg_value > 1.5 else '中程度' if avg_value > 0.8 else '浅い'
+            else:
+                level = '不明'
+
+            report += f"- **{ratio_name}**: {avg_value:.3f} ({level})\n"
+        report += "\n"
+
+    # ピークパフォーマンス区間
+    segment_keys = {'segment_table', 'segment_plot', 'segment_peak_range'}
+    if any(key in results for key in segment_keys):
+        peak_range = results.get('segment_peak_range')
+        peak_score = results.get('segment_peak_score')
+        if peak_range:
+            report += "### ピークパフォーマンス\n\n"
+            if peak_score is not None:
+                report += f"- **最高パフォーマンス区間**: {peak_range} (スコア: {peak_score:.2f})\n\n"
+            else:
+                report += f"- **最高パフォーマンス区間**: {peak_range}\n\n"
+
+    # ========================================
+    # 周波数帯域分析
+    # ========================================
     band_power_keys = {
         'band_power_img',
         'psd_img',
         'spectrogram_img'
     }
     if any(key in results for key in band_power_keys):
-        report += "## バンドパワー分析\n\n"
+        report += "## 🧠 周波数帯域分析\n\n"
 
         if 'band_power_img' in results:
-            report += "### バンドパワーの時間推移\n\n"
+            report += "### バンドパワー時系列\n\n"
             report += f"![バンドパワー時系列](img/{results['band_power_img']})\n\n"
-            if 'band_power_quality_ratio' in results:
-                ratio = results['band_power_quality_ratio'] * 100
-                report += f"HeadBandOn/HSI良好データ使用率: {ratio:.1f}%\n\n"
 
         if 'psd_img' in results:
             report += "### パワースペクトル密度（PSD）\n\n"
@@ -157,94 +194,99 @@ def generate_markdown_report(data_path, output_dir, results):
         if 'spectrogram_img' in results:
             report += "### スペクトログラム\n\n"
             report += f"![スペクトログラム](img/{results['spectrogram_img']})\n\n"
-            report += "時間とともに周波数分布がどう変化するかを可視化しています。\n\n"
 
-    # バンド比分析
-    band_ratio_keys = {'band_ratios_img', 'band_ratios_stats', 'spike_analysis'}
-    if any(key in results for key in band_ratio_keys):
-        report += "## バンド比分析\n\n"
-
-        if 'band_ratios_img' in results:
-            report += f"![バンド比率](img/{results['band_ratios_img']})\n\n"
-
-        if 'band_ratios_stats' in results:
-            report += "### 指標サマリー\n\n"
-            report += results['band_ratios_stats'].to_markdown(index=False, floatfmt='.3f')
-            report += "\n\n"
-
-            report += "### セッション評価\n\n"
-            for _, row in results['band_ratios_stats'].iterrows():
-                ratio_name = row['指標']
-                avg_value = row['平均値']
-
-                if 'リラックス' in ratio_name:
-                    level = 'とても高い' if avg_value > 2.0 else '高い' if avg_value > 1.0 else '普通'
-                elif '集中' in ratio_name:
-                    level = 'とても高い' if avg_value > 2.0 else '高い' if avg_value > 1.0 else '普通'
-                elif '瞑想' in ratio_name:
-                    level = '深い' if avg_value > 1.5 else '中程度' if avg_value > 0.8 else '浅い'
-                else:
-                    level = '不明'
-
-                report += f"- **{ratio_name}**: {avg_value:.3f} ({level})\n"
-
-            report += "\n"
+        # データ品質情報
+        if 'band_power_quality_ratio' in results:
+            ratio = results['band_power_quality_ratio'] * 100
+            report += "### データ品質\n\n"
+            report += f"- **良好データ使用率**: {ratio:.1f}%\n\n"
 
         if 'spike_analysis' in results:
-            report += "### データ品質（スパイク分析）\n\n"
             report += results['spike_analysis'].to_markdown(index=False, floatfmt='.2f')
             report += "\n\n"
 
-    # Frontal Midline Theta 分析
+    # ========================================
+    # 特徴的指標分析
+    # ========================================
     fmtheta_keys = {'frontal_theta_img', 'frontal_theta_stats', 'frontal_theta_increase'}
-    if any(key in results for key in fmtheta_keys):
-        report += "## Frontal Midline Theta分析\n\n"
-
-        if 'frontal_theta_img' in results:
-            report += "### Fmθの時間推移\n\n"
-            report += f"![Frontal Midline Theta](img/{results['frontal_theta_img']})\n\n"
-
-        if 'frontal_theta_stats' in results:
-            report += "### 指標サマリー\n\n"
-            report += results['frontal_theta_stats'].to_markdown(index=False, floatfmt='.3f')
-            report += "\n\n"
-
-        if 'frontal_theta_increase' in results:
-            inc = results['frontal_theta_increase']
-            if pd.notna(inc):
-                report += f"- セッション後半の平均Fmθは前半比で {inc:+.1f}% 変化しました。\n\n"
-            else:
-                report += "- セッション前後半の比較指標を算出できませんでした。\n\n"
-
-    # PAF分析
     paf_keys = {'paf_img', 'paf_summary', 'iaf', 'paf_time_img', 'paf_time_stats'}
-    if any(key in results for key in paf_keys):
-        report += "## Peak Alpha Frequency (PAF) 分析\n\n"
+    band_ratio_keys = {'band_ratios_img', 'band_ratios_stats'}
 
-        if 'paf_img' in results:
-            report += f"![PAF](img/{results['paf_img']})\n\n"
+    if any(key in results for key in (fmtheta_keys | paf_keys | band_ratio_keys)):
+        report += "## 🎯 特徴的指標分析\n\n"
 
-        if 'paf_summary' in results:
-            report += "### チャネル別PAF\n\n"
-            report += results['paf_summary'].to_markdown(index=False, floatfmt='.2f')
-            report += "\n\n"
+        # Frontal Midline Theta
+        if any(key in results for key in fmtheta_keys):
+            report += "### Frontal Midline Theta (Fmθ)\n\n"
 
-        if 'iaf' in results:
-            iaf_data = results['iaf']
-            report += f"**Individual Alpha Frequency (IAF)**: {iaf_data['value']:.2f} ± {iaf_data['std']:.2f} Hz\n\n"
+            if 'frontal_theta_img' in results:
+                report += f"![Frontal Midline Theta](img/{results['frontal_theta_img']})\n\n"
 
-    # fNIRS分析
+            if 'frontal_theta_stats' in results:
+                report += results['frontal_theta_stats'].to_markdown(index=False, floatfmt='.3f')
+                report += "\n\n"
+
+            if 'frontal_theta_increase' in results:
+                inc = results['frontal_theta_increase']
+                if pd.notna(inc):
+                    report += f"セッション後半の平均Fmθは前半比で **{inc:+.1f}%** 変化しました。\n\n"
+
+        # Peak Alpha Frequency
+        if any(key in results for key in paf_keys):
+            report += "### Peak Alpha Frequency (PAF)\n\n"
+
+            if 'paf_img' in results:
+                report += f"![PAF](img/{results['paf_img']})\n\n"
+
+            if 'iaf' in results:
+                iaf_data = results['iaf']
+                report += f"**Individual Alpha Frequency (IAF)**: {iaf_data['value']:.2f} ± {iaf_data['std']:.2f} Hz\n\n"
+
+            if 'paf_summary' in results:
+                report += "**チャネル別詳細**\n\n"
+                report += results['paf_summary'].to_markdown(index=False, floatfmt='.2f')
+                report += "\n\n"
+
+        # バンド比率
+        if any(key in results for key in band_ratio_keys):
+            report += "### バンド比率指標\n\n"
+
+            if 'band_ratios_img' in results:
+                report += f"![バンド比率](img/{results['band_ratios_img']})\n\n"
+
+            if 'band_ratios_stats' in results:
+                report += results['band_ratios_stats'].to_markdown(index=False, floatfmt='.3f')
+                report += "\n\n"
+
+    # ========================================
+    # 血流動態分析 (fNIRS)
+    # ========================================
     if "fnirs_stats" in results or "fnirs_img" in results:
-        report += "## fNIRS分析\n\n"
+        report += "## 🩸 血流動態分析 (fNIRS)\n\n"
+
+        if "fnirs_img" in results:
+            report += "### HbO/HbR時系列\n\n"
+            report += f"![fNIRS時系列](img/{results['fnirs_img']})\n\n"
 
         if "fnirs_stats" in results:
             report += "### 統計サマリー\n\n"
             report += results["fnirs_stats"].to_markdown(floatfmt=".2f")
             report += "\n\n"
 
-        if "fnirs_img" in results:
-            report += "### HbO/HbRの時系列\n\n"
-            report += f"![fNIRS時系列](img/{results['fnirs_img']})\n\n"
+    # ========================================
+    # 時間経過分析
+    # ========================================
+    if any(key in results for key in segment_keys):
+        report += "## ⏱️ 時間経過分析\n\n"
+
+        if 'segment_plot' in results:
+            report += "### セグメント別パフォーマンス\n\n"
+            report += f"![時間セグメント比較](img/{results['segment_plot']})\n\n"
+
+        if 'segment_table' in results:
+            report += "### 詳細データ\n\n"
+            report += results['segment_table'].to_markdown(index=False, floatfmt='.3f')
+            report += "\n\n"
 
     # ファイルに書き込み
     with open(report_path, 'w', encoding='utf-8') as f:
@@ -343,6 +385,7 @@ def run_full_analysis(data_path, output_dir):
     # MNE RAW準備
     print('準備中: MNE RAWデータ...')
     mne_dict = prepare_mne_raw(df)
+    raw = None
 
     if mne_dict:
         raw = mne_dict['raw']
@@ -417,6 +460,7 @@ def run_full_analysis(data_path, output_dir):
             results['paf_time_stats'] = paf_time_dict['stats']
 
     # Frontal Midline Theta解析
+    fmtheta_result = None
     try:
         print('計算中: Frontal Midline Theta...')
         fmtheta_result = calculate_frontal_theta(df, raw=raw if mne_dict else None)
@@ -430,6 +474,28 @@ def run_full_analysis(data_path, output_dir):
         results['frontal_theta_increase'] = fmtheta_result.metadata.get('increase_rate_percent')
     except Exception as exc:
         print(f'警告: Fmθ解析に失敗しました ({exc})')
+
+    # 時間セグメント分析
+    try:
+        print('計算中: 時間セグメント分析...')
+        segment_result = calculate_segment_analysis(
+            df,
+            segment_minutes=5,
+            fmtheta_result=fmtheta_result,
+            raw=raw if mne_dict else None,
+        )
+        print('プロット中: 時間セグメント比較...')
+        segment_plot_name = 'time_segment_metrics.png'
+        plot_segment_comparison(
+            segment_result,
+            img_path=img_dir / segment_plot_name,
+        )
+        results['segment_table'] = segment_result.table
+        results['segment_plot'] = segment_plot_name
+        results['segment_peak_range'] = segment_result.metadata.get('peak_time_range')
+        results['segment_peak_score'] = segment_result.metadata.get('peak_score')
+    except Exception as exc:
+        print(f'警告: 時間セグメント分析に失敗しました ({exc})')
 
     # バンド比率
     print('計算中: バンド比率...')
