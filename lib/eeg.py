@@ -52,68 +52,64 @@ def _min_max_normalize(series: pd.Series) -> pd.Series:
 
 
 def calculate_segment_analysis(
-    df: pd.DataFrame,
+    df_clean: pd.DataFrame,
+    fmtheta_series: pd.Series,
     segment_minutes: int = 5,
-    fmtheta_result: Optional[FrontalThetaResult] = None,
-    raw: Optional['mne.io.BaseRaw'] = None,
+    band_means: Optional[Dict[str, pd.Series]] = None,
 ) -> SegmentAnalysisResult:
     """
     セッションを一定時間のセグメントに分割し、主要指標を算出する。
 
     Parameters
     ----------
-    df : pd.DataFrame
-        Mind Monitor形式のデータフレーム。
+    df_clean : pd.DataFrame
+        前処理済みMind Monitor形式のデータフレーム。
+    fmtheta_series : pd.Series
+        Fmθの時系列データ（indexはタイムスタンプ）。
     segment_minutes : int, default 5
         セグメント長（分単位）。
-    fmtheta_result : FrontalThetaResult, optional
-        既計算のFmθ結果。未指定の場合は内部で算出する。
-    raw : mne.io.BaseRaw, optional
-        Fmθ算出用に再利用するRAWオブジェクト。
+    band_means : dict of pd.Series, optional
+        事前計算されたバンド平均値の辞書 {'Alpha': series, 'Beta': series, 'Theta': series}。
+        未指定の場合は内部で計算する。
 
     Returns
     -------
     SegmentAnalysisResult
         集計表・正規化値・メタデータを含む時間セグメント分析結果。
     """
-    if 'TimeStamp' not in df.columns:
+    if 'TimeStamp' not in df_clean.columns:
         raise ValueError('TimeStamp列が存在しません。')
     if segment_minutes <= 0:
         raise ValueError('segment_minutesは正の整数で指定してください。')
 
-    df_base = df.copy()
-    df_base['TimeStamp'] = pd.to_datetime(df_base['TimeStamp'], errors='coerce')
-    df_base = df_base.dropna(subset=['TimeStamp']).sort_values('TimeStamp')
-    if df_base.empty:
-        raise ValueError('有効なTimeStampを持つデータがありません。')
-
-    df_clean, _ = filter_signal_quality(df_base, require_headband=True, require_all_good=True)
+    df_clean = df_clean.copy()
     df_clean['TimeStamp'] = pd.to_datetime(df_clean['TimeStamp'], errors='coerce')
     df_clean = df_clean.dropna(subset=['TimeStamp']).sort_values('TimeStamp')
     if df_clean.empty:
-        raise ValueError('品質条件を満たすデータがありません。')
+        raise ValueError('有効なTimeStampを持つデータがありません。')
 
-    session_start = df_base['TimeStamp'].iloc[0]
-    session_end = df_base['TimeStamp'].iloc[-1]
+    session_start = df_clean['TimeStamp'].iloc[0]
+    session_end = df_clean['TimeStamp'].iloc[-1]
     freq_str = f'{int(segment_minutes)}T'
     segment_delta = pd.Timedelta(minutes=segment_minutes)
 
-    # Fmθ時系列は既存結果を再利用
-    if fmtheta_result is None:
-        fmtheta_result = calculate_frontal_theta(df_clean, raw=raw)
-    fmtheta_series = fmtheta_result.time_series.sort_index()
+    # Fmθ時系列
+    fmtheta_series = fmtheta_series.sort_index()
 
-    # バンド別の平均値をあらかじめ計算
-    band_series: Dict[str, pd.Series] = {}
-    for band in ('Alpha', 'Beta', 'Theta'):
-        cols = [c for c in df_base.columns if c.startswith(f'{band}_')]
-        if not cols:
-            band_series[band] = pd.Series(dtype=float)
-            continue
-        numeric = df_base[cols].apply(pd.to_numeric, errors='coerce')
-        band_mean = numeric.mean(axis=1)
-        band_mean.index = df_base['TimeStamp']
-        band_series[band] = band_mean.sort_index()
+    # バンド別の平均値（外部から渡されない場合は内部で計算）
+    if band_means is None:
+        band_series: Dict[str, pd.Series] = {}
+        for band in ('Alpha', 'Beta', 'Theta'):
+            cols = [c for c in df_clean.columns if c.startswith(f'{band}_')]
+            if not cols:
+                band_series[band] = pd.Series(dtype=float)
+                continue
+            numeric = df_clean[cols].apply(pd.to_numeric, errors='coerce')
+            band_mean = numeric.mean(axis=1)
+            band_mean.index = df_clean['TimeStamp']
+            band_series[band] = band_mean.sort_index()
+    else:
+        band_series = band_means
 
     # セグメント境界の生成
     segment_starts = []
@@ -129,10 +125,7 @@ def calculate_segment_analysis(
 
     for idx, start in enumerate(segment_starts, start=1):
         end = min(start + segment_delta, session_end)
-        base_mask = (df_base['TimeStamp'] >= start) & (df_base['TimeStamp'] < end)
         clean_mask = (df_clean['TimeStamp'] >= start) & (df_clean['TimeStamp'] < end)
-
-        base_slice_exists = base_mask.any()
         clean_slice_exists = clean_mask.any()
 
         fm_slice = fmtheta_series.loc[(fmtheta_series.index >= start) & (fmtheta_series.index < end)]
@@ -152,24 +145,13 @@ def calculate_segment_analysis(
         if pd.notna(alpha_mean) and alpha_mean != 0:
             theta_alpha_ratio = theta_mean / alpha_mean
 
-        base_count = int(base_mask.sum())
         clean_count = int(clean_mask.sum())
-        segment_quality_ratio = (clean_count / base_count) if base_count > 0 else np.nan
 
         comment_parts = []
-        if not base_slice_exists:
-            comment_parts.append('計測データ不足')
-        elif not clean_slice_exists:
-            comment_parts.append('品質条件未達 (HSI/HeadBand)')
+        if not clean_slice_exists:
+            comment_parts.append('データ不足')
         if fm_slice.dropna().empty:
             comment_parts.append('Fmθデータ不足')
-        if (
-            segment_quality_ratio is not None
-            and not np.isnan(segment_quality_ratio)
-            and segment_quality_ratio > 0.0
-            and segment_quality_ratio < 0.6
-        ):
-            comment_parts.append(f'品質カバレッジ {segment_quality_ratio * 100:.0f}%')
         comments.append(' / '.join(comment_parts) if comment_parts else '')
 
         records.append({
@@ -181,7 +163,6 @@ def calculate_segment_analysis(
             'beta_mean': beta_mean,
             'theta_mean': theta_mean,
             'theta_alpha_ratio': theta_alpha_ratio,
-            'quality_ratio': segment_quality_ratio,
         })
 
     segment_frame = pd.DataFrame(records)
@@ -214,7 +195,6 @@ def calculate_segment_analysis(
     # 表形式（日本語ラベル）
     display_rows = []
     for (idx, row), comment in zip(segment_frame.iterrows(), comments):
-        quality_pct = row['quality_ratio'] * 100 if pd.notna(row['quality_ratio']) else np.nan
         display_rows.append({
             'セグメント': f"セグメント{int(row['segment_index'])}",
             '時間帯': row['label'],
@@ -222,14 +202,11 @@ def calculate_segment_analysis(
             'Alpha平均 (μV²)': row['alpha_mean'],
             'Beta平均 (μV²)': row['beta_mean'],
             'θ/α比': row['theta_alpha_ratio'],
-            '品質カバレッジ (%)': quality_pct,
             '備考': comment,
             'ピーク': '★' if (peak_idx is not None and int(row['segment_index']) == peak_idx) else '',
         })
 
     table = pd.DataFrame(display_rows)
-
-    overall_quality_ratio = float(len(df_clean) / len(df_base)) if len(df_base) else None
 
     metadata = {
         'segment_minutes': segment_minutes,
@@ -242,8 +219,6 @@ def calculate_segment_analysis(
             else None
         ),
         'peak_score': float(peak_score.loc[peak_idx]) if peak_idx is not None else None,
-        'fmtheta_band': fmtheta_result.metadata.get('band') if fmtheta_result else None,
-        'quality_data_ratio': overall_quality_ratio,
     }
 
     segments = segment_frame.set_index('segment_index')

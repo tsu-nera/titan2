@@ -479,10 +479,9 @@ def run_full_analysis(data_path, output_dir):
     try:
         print('計算中: 時間セグメント分析...')
         segment_result = calculate_segment_analysis(
-            df,
+            df_quality,
+            fmtheta_result.time_series,
             segment_minutes=5,
-            fmtheta_result=fmtheta_result,
-            raw=raw if mne_dict else None,
         )
         print('プロット中: 時間セグメント比較...')
         segment_plot_name = 'time_segment_metrics.png'
