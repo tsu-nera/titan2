@@ -56,6 +56,7 @@ def calculate_segment_analysis(
     fmtheta_series: pd.Series,
     segment_minutes: int = 5,
     band_means: Optional[Dict[str, pd.Series]] = None,
+    iaf_series: Optional[pd.Series] = None,
 ) -> SegmentAnalysisResult:
     """
     セッションを一定時間のセグメントに分割し、主要指標を算出する。
@@ -71,6 +72,8 @@ def calculate_segment_analysis(
     band_means : dict of pd.Series, optional
         事前計算されたバンド平均値の辞書 {'Alpha': series, 'Beta': series, 'Theta': series}。
         未指定の場合は内部で計算する。
+    iaf_series : pd.Series, optional
+        IAF（Individual Alpha Frequency）の時系列データ（indexはタイムスタンプ）。
 
     Returns
     -------
@@ -95,6 +98,10 @@ def calculate_segment_analysis(
 
     # Fmθ時系列
     fmtheta_series = fmtheta_series.sort_index()
+
+    # IAF時系列（渡されている場合）
+    if iaf_series is not None:
+        iaf_series = iaf_series.sort_index()
 
     # バンド別の平均値（外部から渡されない場合は内部で計算）
     if band_means is None:
@@ -131,6 +138,12 @@ def calculate_segment_analysis(
         fm_slice = fmtheta_series.loc[(fmtheta_series.index >= start) & (fmtheta_series.index < end)]
         fm_mean = fm_slice.mean()
 
+        # IAF平均（渡されている場合）
+        iaf_mean = np.nan
+        if iaf_series is not None:
+            iaf_slice = iaf_series.loc[(iaf_series.index >= start) & (iaf_series.index < end)]
+            iaf_mean = iaf_slice.mean()
+
         def _segment_mean(series: pd.Series) -> float:
             if series.empty:
                 return np.nan
@@ -159,6 +172,7 @@ def calculate_segment_analysis(
             'segment_start': start,
             'segment_end': end,
             'fmtheta_mean': fm_mean,
+            'iaf_mean': iaf_mean,
             'alpha_mean': alpha_mean,
             'beta_mean': beta_mean,
             'theta_mean': theta_mean,
@@ -175,15 +189,15 @@ def calculate_segment_analysis(
         raise ValueError('時間セグメント分析の結果が空です。')
 
     # 正規化スコア
-    numeric_cols = ['fmtheta_mean', 'alpha_mean', 'beta_mean', 'theta_alpha_ratio']
+    numeric_cols = ['fmtheta_mean', 'iaf_mean', 'alpha_mean', 'beta_mean', 'theta_alpha_ratio']
     metrics_df = segment_frame.set_index('segment_index')[numeric_cols]
     normalized = pd.DataFrame(
         {col: _min_max_normalize(metrics_df[col]) for col in metrics_df.columns}
     )
     normalized = normalized.reindex(metrics_df.index)
 
-    # ピーク判定（Fmθとθ/α比の平均）
-    peak_candidates = normalized[['fmtheta_mean', 'theta_alpha_ratio']]
+    # ピーク判定（Fmθ、IAF、θ/α比の平均）
+    peak_candidates = normalized[['fmtheta_mean', 'iaf_mean', 'theta_alpha_ratio']]
     peak_candidates = peak_candidates.dropna(how='all')
     if peak_candidates.empty:
         peak_idx = None
@@ -199,6 +213,7 @@ def calculate_segment_analysis(
             'セグメント': f"セグメント{int(row['segment_index'])}",
             '時間帯': row['label'],
             'Fmθ平均 (μV²)': row['fmtheta_mean'],
+            'IAF平均 (Hz)': row['iaf_mean'],
             'Alpha平均 (μV²)': row['alpha_mean'],
             'Beta平均 (μV²)': row['beta_mean'],
             'θ/α比': row['theta_alpha_ratio'],

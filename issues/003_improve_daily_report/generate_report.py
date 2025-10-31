@@ -478,10 +478,20 @@ def run_full_analysis(data_path, output_dir):
     # 時間セグメント分析
     try:
         print('計算中: 時間セグメント分析...')
+
+        # IAF時系列の準備（PAF時間推移から）
+        iaf_series = None
+        if 'paf_time_img' in results and paf_time_dict:
+            # PAF時間推移のタイムスタンプとIAF値をSeriesに変換
+            session_start = df['TimeStamp'].iloc[0]
+            iaf_times = pd.to_datetime(session_start) + pd.to_timedelta(paf_time_dict['times'], unit='s')
+            iaf_series = pd.Series(paf_time_dict['paf_smoothed'], index=iaf_times)
+
         segment_result = calculate_segment_analysis(
             df_quality,
             fmtheta_result.time_series,
             segment_minutes=5,
+            iaf_series=iaf_series,
         )
         print('プロット中: 時間セグメント比較...')
         segment_plot_name = 'time_segment_metrics.png'
