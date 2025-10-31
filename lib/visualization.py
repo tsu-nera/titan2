@@ -116,11 +116,17 @@ def plot_fnirs_muse_style(fnirs_results, figsize=(14, 8)):
     # 凡例
     ax.legend(loc='upper right', framealpha=0.9, fontsize=10)
 
-    # Y軸の範囲を適切に設定
+    # Y軸の範囲を適切に設定（NaNを無視）
     all_values = np.concatenate([left_hbo, left_hbr, right_hbo, right_hbr])
-    y_min = np.floor(np.min(all_values))
-    y_max = np.ceil(np.max(all_values))
-    ax.set_ylim([y_min, y_max])
+    finite_values = all_values[np.isfinite(all_values)]
+    if finite_values.size > 0:
+        y_min = np.floor(np.min(finite_values))
+        y_max = np.ceil(np.max(finite_values))
+        if y_min == y_max:
+            padding = max(abs(y_min) * 0.1, 1.0)
+            y_min -= padding
+            y_max += padding
+        ax.set_ylim([y_min, y_max])
 
     plt.tight_layout()
     return fig, ax

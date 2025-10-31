@@ -46,15 +46,48 @@ def calculate_hbo_hbr(optics_730nm, optics_850nm, baseline_duration=10, sampling
     hbr : np.ndarray
         脱酸素化ヘモグロビン濃度変化 (µM)
     """
+    optics_730nm = np.asarray(optics_730nm, dtype=float)
+    optics_850nm = np.asarray(optics_850nm, dtype=float)
+
     # ベースライン計算用のサンプル数
     baseline_samples = int(baseline_duration * sampling_rate)
 
-    # 光学密度変化 (ΔOD) を計算
-    baseline_730 = np.mean(optics_730nm[:baseline_samples])
-    baseline_850 = np.mean(optics_850nm[:baseline_samples])
+    def _compute_baseline(arr):
+        finite_indices = np.flatnonzero(np.isfinite(arr) & (arr > 0))
+        if finite_indices.size == 0:
+            return None
+        take_indices = finite_indices[:baseline_samples]
+        baseline = np.nanmean(arr[take_indices]) if take_indices.size > 0 else np.nan
+        if not np.isfinite(baseline) or baseline <= 0:
+            # 先頭で十分なサンプルが取れない場合、全体の有限正値から平均を取る
+            finite_values = arr[np.isfinite(arr) & (arr > 0)]
+            baseline = np.nanmean(finite_values) if finite_values.size > 0 else np.nan
+        if not np.isfinite(baseline) or baseline <= 0:
+            return None
+        return baseline
 
-    delta_od_730 = -np.log10(optics_730nm / baseline_730)
-    delta_od_850 = -np.log10(optics_850nm / baseline_850)
+    baseline_730 = _compute_baseline(optics_730nm)
+    baseline_850 = _compute_baseline(optics_850nm)
+
+    if baseline_730 is None or baseline_850 is None:
+        # 有効ベースラインが取得できない場合はNaN配列を返す
+        length = optics_730nm.shape[0]
+        nan_arr = np.full(length, np.nan)
+        return nan_arr, nan_arr
+
+    # 光学密度変化 (ΔOD) を計算
+    delta_od_730 = np.full_like(optics_730nm, np.nan)
+    delta_od_850 = np.full_like(optics_850nm, np.nan)
+
+    valid_730 = np.isfinite(optics_730nm) & (optics_730nm > 0)
+    valid_850 = np.isfinite(optics_850nm) & (optics_850nm > 0)
+
+    delta_od_730[valid_730] = -np.log10(
+        np.clip(optics_730nm[valid_730] / baseline_730, 1e-6, None)
+    )
+    delta_od_850[valid_850] = -np.log10(
+        np.clip(optics_850nm[valid_850] / baseline_850, 1e-6, None)
+    )
 
     # 消衰係数マトリックス
     eps_matrix = np.array([
@@ -64,15 +97,15 @@ def calculate_hbo_hbr(optics_730nm, optics_850nm, baseline_duration=10, sampling
 
     eps_inv = np.linalg.inv(eps_matrix)
 
-    # 各時点でHbO, HbRを計算
-    hbo = np.zeros_like(delta_od_730)
-    hbr = np.zeros_like(delta_od_730)
+    # 各時点でHbO, HbRを計算（ベクトル化）
+    delta_od = np.column_stack([delta_od_730, delta_od_850])
+    concentrations = (delta_od @ eps_inv.T) / (DPF * SOURCE_DETECTOR_DISTANCE)
+    hbo = concentrations[:, 0]
+    hbr = concentrations[:, 1]
 
-    for i in range(len(delta_od_730)):
-        delta_od = np.array([delta_od_730[i], delta_od_850[i]])
-        concentrations = eps_inv @ delta_od / (DPF * SOURCE_DETECTOR_DISTANCE)
-        hbo[i] = concentrations[0]
-        hbr[i] = concentrations[1]
+    # 非有限値をNaNに置換
+    hbo = np.where(np.isfinite(hbo), hbo, np.nan)
+    hbr = np.where(np.isfinite(hbr), hbr, np.nan)
 
     # Muse App準拠のスケールに調整
     hbo = hbo * SCALE_FACTOR
@@ -122,26 +155,46 @@ def analyze_fnirs(optics_data):
     )
 
     # 統計情報
+    def safe_stats(arr):
+        if np.all(~np.isfinite(arr)):
+            return {
+                'mean': np.nan,
+                'std': np.nan,
+                'min': np.nan,
+                'max': np.nan,
+            }
+        return {
+            'mean': np.nanmean(arr),
+            'std': np.nanstd(arr),
+            'min': np.nanmin(arr),
+            'max': np.nanmax(arr),
+        }
+
+    left_hbo_stats = safe_stats(left_hbo)
+    left_hbr_stats = safe_stats(left_hbr)
+    right_hbo_stats = safe_stats(right_hbo)
+    right_hbr_stats = safe_stats(right_hbr)
+
     stats = {
         'left': {
-            'hbo_mean': np.mean(left_hbo),
-            'hbo_std': np.std(left_hbo),
-            'hbo_min': np.min(left_hbo),
-            'hbo_max': np.max(left_hbo),
-            'hbr_mean': np.mean(left_hbr),
-            'hbr_std': np.std(left_hbr),
-            'hbr_min': np.min(left_hbr),
-            'hbr_max': np.max(left_hbr),
+            'hbo_mean': left_hbo_stats['mean'],
+            'hbo_std': left_hbo_stats['std'],
+            'hbo_min': left_hbo_stats['min'],
+            'hbo_max': left_hbo_stats['max'],
+            'hbr_mean': left_hbr_stats['mean'],
+            'hbr_std': left_hbr_stats['std'],
+            'hbr_min': left_hbr_stats['min'],
+            'hbr_max': left_hbr_stats['max'],
         },
         'right': {
-            'hbo_mean': np.mean(right_hbo),
-            'hbo_std': np.std(right_hbo),
-            'hbo_min': np.min(right_hbo),
-            'hbo_max': np.max(right_hbo),
-            'hbr_mean': np.mean(right_hbr),
-            'hbr_std': np.std(right_hbr),
-            'hbr_min': np.min(right_hbr),
-            'hbr_max': np.max(right_hbr),
+            'hbo_mean': right_hbo_stats['mean'],
+            'hbo_std': right_hbo_stats['std'],
+            'hbo_min': right_hbo_stats['min'],
+            'hbo_max': right_hbo_stats['max'],
+            'hbr_mean': right_hbr_stats['mean'],
+            'hbr_std': right_hbr_stats['std'],
+            'hbr_min': right_hbr_stats['min'],
+            'hbr_max': right_hbr_stats['max'],
         }
     }
 

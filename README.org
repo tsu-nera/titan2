@@ -1,4 +1,6 @@
 #+title: titan2
 
+解脱するぞぃ
+
 ref. https://github.com/tsu-nera/yaseru
 
