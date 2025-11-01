@@ -62,19 +62,48 @@ def calculate_band_ratios(df, resample_interval='10S', bands=None):
     # リサンプリング
     ratio_df_resampled = ratio_df.set_index('TimeStamp').resample(resample_interval).mean().reset_index()
 
-    # 統計サマリー
+    # 統計サマリー（外れ値除去版）
     summary_scores = []
+    z_threshold = 3.0
+
     for ratio_name, _, _ in ratio_configs:
         if ratio_name in ratio_df.columns:
             values = ratio_df[ratio_name].dropna()
-            summary_scores.append({
-                '指標': ratio_name,
-                '平均値': values.mean(),
-                '中央値': values.median(),
-                '標準偏差': values.std(),
-                '最小値': values.min(),
-                '最大値': values.max(),
-            })
+
+            if len(values) > 0:
+                # Z-scoreによる外れ値除去
+                z_scores = np.abs(stats.zscore(values))
+                filtered_values = values[z_scores < z_threshold]
+                n_outliers = len(values) - len(filtered_values)
+
+                # 外れ値除去後の統計量を計算
+                if len(filtered_values) > 0:
+                    q1 = filtered_values.quantile(0.25)
+                    q3 = filtered_values.quantile(0.75)
+                    iqr = q3 - q1
+
+                    summary_scores.append({
+                        '指標': ratio_name,
+                        '平均値': filtered_values.mean(),
+                        '中央値': filtered_values.median(),
+                        '標準偏差': filtered_values.std(),
+                        '最小値': filtered_values.min(),
+                        '最大値': filtered_values.max(),
+                        'IQR': iqr,
+                        '除外サンプル数': n_outliers,
+                    })
+                else:
+                    # 全て外れ値の場合
+                    summary_scores.append({
+                        '指標': ratio_name,
+                        '平均値': np.nan,
+                        '中央値': np.nan,
+                        '標準偏差': np.nan,
+                        '最小値': np.nan,
+                        '最大値': np.nan,
+                        'IQR': np.nan,
+                        '除外サンプル数': n_outliers,
+                    })
 
     # スパイク分析
     spike_info = []

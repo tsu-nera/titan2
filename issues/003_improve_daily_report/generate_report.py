@@ -292,6 +292,7 @@ def generate_markdown_report(data_path, output_dir, results):
             if 'band_ratios_stats' in results:
                 report += results['band_ratios_stats'].to_markdown(index=False, floatfmt='.3f')
                 report += "\n\n"
+                report += "> **注**: 統計値は外れ値（Z-score > 3）を除外して計算されています。IQRは四分位範囲（75%点 - 25%点）を示します。\n\n"
 
     # ========================================
     # 血流動態分析 (fNIRS)
@@ -546,6 +547,7 @@ def run_full_analysis(data_path, output_dir):
             fmtheta_result.time_series,
             segment_minutes=5,
             iaf_series=iaf_series,
+            warmup_minutes=1.0,  # 最初の1分間を除外（アーティファクト対策）
         )
         print('プロット中: 時間セグメント比較...')
         segment_plot_name = 'time_segment_metrics.png'

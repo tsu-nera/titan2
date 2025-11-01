@@ -11,6 +11,7 @@ from typing import Dict, Optional, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 from .sensors.eeg.frontal_theta import (
     FrontalThetaResult,
@@ -57,6 +58,7 @@ def calculate_segment_analysis(
     segment_minutes: int = 5,
     band_means: Optional[Dict[str, pd.Series]] = None,
     iaf_series: Optional[pd.Series] = None,
+    warmup_minutes: float = 0.0,
 ) -> SegmentAnalysisResult:
     """
     セッションを一定時間のセグメントに分割し、主要指標を算出する。
@@ -74,6 +76,8 @@ def calculate_segment_analysis(
         未指定の場合は内部で計算する。
     iaf_series : pd.Series, optional
         IAF（Individual Alpha Frequency）の時系列データ（indexはタイムスタンプ）。
+    warmup_minutes : float, default 0.0
+        セッション開始後の除外期間（分単位）。アーティファクト除去のため。
 
     Returns
     -------
@@ -91,17 +95,27 @@ def calculate_segment_analysis(
     if df_clean.empty:
         raise ValueError('有効なTimeStampを持つデータがありません。')
 
-    session_start = df_clean['TimeStamp'].iloc[0]
+    # ウォームアップ期間を除外
+    original_start = df_clean['TimeStamp'].iloc[0]
+    session_start = original_start + pd.Timedelta(minutes=warmup_minutes)
     session_end = df_clean['TimeStamp'].iloc[-1]
+
+    # ウォームアップ後のデータのみを使用
+    df_clean = df_clean[df_clean['TimeStamp'] >= session_start]
+    if df_clean.empty:
+        raise ValueError(f'ウォームアップ期間（{warmup_minutes}分）除外後、有効なデータがありません。')
+
     freq_str = f'{int(segment_minutes)}T'
     segment_delta = pd.Timedelta(minutes=segment_minutes)
 
-    # Fmθ時系列
+    # Fmθ時系列（ウォームアップ期間を除外）
     fmtheta_series = fmtheta_series.sort_index()
+    fmtheta_series = fmtheta_series[fmtheta_series.index >= session_start]
 
-    # IAF時系列（渡されている場合）
+    # IAF時系列（渡されている場合、ウォームアップ期間を除外）
     if iaf_series is not None:
         iaf_series = iaf_series.sort_index()
+        iaf_series = iaf_series[iaf_series.index >= session_start]
 
     # バンド別の平均値（外部から渡されない場合は内部で計算）
     if band_means is None:
@@ -136,7 +150,15 @@ def calculate_segment_analysis(
         clean_slice_exists = clean_mask.any()
 
         fm_slice = fmtheta_series.loc[(fmtheta_series.index >= start) & (fmtheta_series.index < end)]
-        fm_mean = fm_slice.mean()
+
+        # Fmθ平均の計算（外れ値除去）
+        fm_clean = fm_slice.dropna()
+        if len(fm_clean) > 3:  # 最低限のサンプル数が必要
+            z_scores = np.abs(stats.zscore(fm_clean))
+            fm_filtered = fm_clean[z_scores < 3.0]
+            fm_mean = fm_filtered.mean() if len(fm_filtered) > 0 else fm_clean.mean()
+        else:
+            fm_mean = fm_clean.mean() if len(fm_clean) > 0 else np.nan
 
         # IAF平均（渡されている場合）
         iaf_mean = np.nan
@@ -154,9 +176,10 @@ def calculate_segment_analysis(
         beta_mean = _segment_mean(band_series['Beta'])
         theta_mean = _segment_mean(band_series['Theta'])
 
+        # θ/α比: 対数値（Bels）なので引き算でlog(theta/alpha)を計算
         theta_alpha_ratio = np.nan
-        if pd.notna(alpha_mean) and alpha_mean != 0:
-            theta_alpha_ratio = theta_mean / alpha_mean
+        if pd.notna(alpha_mean) and pd.notna(theta_mean):
+            theta_alpha_ratio = theta_mean - alpha_mean
 
         clean_count = int(clean_mask.sum())
 
@@ -214,9 +237,9 @@ def calculate_segment_analysis(
             '時間帯': row['label'],
             'Fmθ平均 (μV²)': row['fmtheta_mean'],
             'IAF平均 (Hz)': row['iaf_mean'],
-            'Alpha平均 (μV²)': row['alpha_mean'],
-            'Beta平均 (μV²)': row['beta_mean'],
-            'θ/α比': row['theta_alpha_ratio'],
+            'Alpha平均 (Bels)': row['alpha_mean'],
+            'Beta平均 (Bels)': row['beta_mean'],
+            'θ/α比 (Bels)': row['theta_alpha_ratio'],
             '備考': comment,
             'ピーク': '★' if (peak_idx is not None and int(row['segment_index']) == peak_idx) else '',
         })
