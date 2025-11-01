@@ -13,6 +13,38 @@ warnings.filterwarnings('ignore')
 mne.set_log_level('ERROR')
 
 
+def _estimate_sampling_rate(frame):
+    """
+    前処理後のデータフレームから正確なサンプリングレートを推定
+
+    Parameters
+    ----------
+    frame : pd.DataFrame
+        TimeStampをインデックスとするデータフレーム（重複除去・補間済み）
+
+    Returns
+    -------
+    sfreq : float
+        推定されたサンプリングレート（Hz）
+
+    Notes
+    -----
+    従来の中央値ベースの推定方法は、Mind Monitor CSVのような
+    異なるサンプリングレートが混在するデータでは不正確。
+    実際のサンプル数と時間長から直接計算することで、
+    MNEが認識する時間軸と実際の記録時間が一致する。
+    """
+    if frame.empty or len(frame) < 2:
+        return DEFAULT_SFREQ
+
+    duration_seconds = (frame.index.max() - frame.index.min()).total_seconds()
+    if duration_seconds <= 0:
+        return DEFAULT_SFREQ
+
+    sfreq = len(frame) / duration_seconds
+    return sfreq
+
+
 def filter_eeg_quality(df, require_all_good=False):
     """
     EEG固有のHSI品質に基づいてデータをフィルタ
@@ -93,9 +125,7 @@ def prepare_mne_raw(df, sfreq=None):
 
     # サンプリングレートの推定
     if sfreq is None:
-        diffs = frame.index.to_series().diff().dropna()
-        dt_seconds = diffs.median().total_seconds()
-        sfreq = 1.0 / dt_seconds if dt_seconds > 0 else DEFAULT_SFREQ
+        sfreq = _estimate_sampling_rate(frame)
 
     # MNE RawArrayの作成
     ch_names = list(frame.columns)
