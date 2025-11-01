@@ -43,6 +43,13 @@ from .frontal_theta import (
     plot_frontal_theta,
 )
 
+# FAA解析
+from .frontal_asymmetry import (
+    FrontalAsymmetryResult,
+    calculate_frontal_asymmetry,
+    plot_frontal_asymmetry,
+)
+
 __all__ = [
     # 定数
     'FREQ_BANDS',
@@ -76,4 +83,8 @@ __all__ = [
     'FrontalThetaResult',
     'calculate_frontal_theta',
     'plot_frontal_theta',
+    # FAA解析
+    'FrontalAsymmetryResult',
+    'calculate_frontal_asymmetry',
+    'plot_frontal_asymmetry',
 ]

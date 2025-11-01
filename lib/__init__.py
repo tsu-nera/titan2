@@ -53,6 +53,9 @@ from .sensors.eeg import (
     FrontalThetaResult,
     calculate_frontal_theta,
     plot_frontal_theta,
+    FrontalAsymmetryResult,
+    calculate_frontal_asymmetry,
+    plot_frontal_asymmetry,
 )
 
 from .eeg import (
@@ -106,6 +109,9 @@ __all__ = [
     'FrontalThetaResult',
     'calculate_frontal_theta',
     'plot_frontal_theta',
+    'FrontalAsymmetryResult',
+    'calculate_frontal_asymmetry',
+    'plot_frontal_asymmetry',
     # high-level eeg utilities
     'SegmentAnalysisResult',
     'calculate_segment_analysis',
