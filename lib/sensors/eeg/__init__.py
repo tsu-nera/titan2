@@ -50,6 +50,14 @@ from .frontal_asymmetry import (
     plot_frontal_asymmetry,
 )
 
+# Spectral Entropy解析
+from .spectral_entropy import (
+    SpectralEntropyResult,
+    calculate_spectral_entropy,
+    calculate_spectral_entropy_time_series,
+    plot_spectral_entropy,
+)
+
 __all__ = [
     # 定数
     'FREQ_BANDS',
@@ -87,4 +95,9 @@ __all__ = [
     'FrontalAsymmetryResult',
     'calculate_frontal_asymmetry',
     'plot_frontal_asymmetry',
+    # Spectral Entropy解析
+    'SpectralEntropyResult',
+    'calculate_spectral_entropy',
+    'calculate_spectral_entropy_time_series',
+    'plot_spectral_entropy',
 ]

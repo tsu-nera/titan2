@@ -51,19 +51,25 @@
 - `issues/003_improve_daily_report/generate_report.py`: Fmθ解析の組み込み
 - `issues/003_improve_daily_report/REPORT.md`: 「Frontal Midline Theta分析」セクションを追加し最新グラフを反映
 
-#### 1.2 時間セグメント分析
+#### 1.2 時間セグメント分析 ✅（2025-11-01完了）
 **目的**: セッション中の集中度の変化を可視化
 
 **実装内容**:
 - セッションを5分刻みでセグメント分割
-- 各セグメントで主要指標（Fmθ、Alpha、Beta、θ/α比率）を計算
-- セグメント別の統計表を生成
-- ピークパフォーマンス時間帯を特定
+- 各セグメントで主要指標（Fmθ、IAF、Alpha、Beta、θ/α比）を計算
+- ウォームアップ期間除外機能（1分間）の実装でアーティファクト対策
+- Fmθセグメント平均計算時の外れ値除去（Z-score > 3）
+- 対数値（Bels単位）での正しい計算ロジック実装：
+  - θ/α比 = log(θ) - log(α)（引き算で計算）
+  - Alpha/Beta/Thetaの表示単位を「Bels」に修正
+- セグメント別の統計表を生成（正規化スコアで可視化）
+- ピークパフォーマンス時間帯を特定（Fmθ、IAF、θ/α比の総合評価）
 
 **成果物**:
-- `lib/eeg.py`: `calculate_segment_analysis()` 関数
-- `lib/eeg.py`: `plot_segment_comparison()` 関数
-- レポートに新セクション「時間セグメント分析」
+- `lib/eeg.py`: `calculate_segment_analysis()` 関数（`warmup_minutes`パラメータ追加）
+- `lib/sensors/eeg/plotting.py`: `plot_segment_comparison()` 関数
+- `issues/003_improve_daily_report/generate_report.py`: セグメント分析の組み込み（warmup_minutes=1.0設定）
+- `issues/003_improve_daily_report/REPORT.md`: 「時間経過分析」セクションを追加し最新グラフを反映
 
 #### 1.3 総合スコアの算出
 **目的**: 複数指標を統合した分かりやすい評価

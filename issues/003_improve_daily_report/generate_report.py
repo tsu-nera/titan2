@@ -47,6 +47,9 @@ from lib import (
     plot_frontal_theta,
     calculate_frontal_asymmetry,
     plot_frontal_asymmetry,
+    calculate_spectral_entropy,
+    calculate_spectral_entropy_time_series,
+    plot_spectral_entropy,
     calculate_segment_analysis,
     plot_segment_comparison,
     get_optics_data,
@@ -282,6 +285,27 @@ def generate_markdown_report(data_path, output_dir, results):
                 report += "\n\n"
                 report += "> **解釈**: FAA = ln(右) - ln(左)。正値は左半球優位（接近動機・ポジティブ感情）、負値は右半球優位（回避動機・ネガティブ感情）を示唆します。\n\n"
 
+        # Spectral Entropy
+        se_keys = ['spectral_entropy_img', 'spectral_entropy_stats']
+        if any(key in results for key in se_keys):
+            report += "### Spectral Entropy (SE)\n\n"
+
+            if 'spectral_entropy_img' in results:
+                report += f"![Spectral Entropy](img/{results['spectral_entropy_img']})\n\n"
+
+            if 'spectral_entropy_stats' in results:
+                report += results['spectral_entropy_stats'].to_markdown(index=False, floatfmt='.3f')
+                report += "\n\n"
+
+            if 'spectral_entropy_change' in results:
+                change = results['spectral_entropy_change']
+                if pd.notna(change):
+                    interpretation = "低下（注意集中）" if change < 0 else "上昇（注意散漫）"
+                    report += f"セッション後半のエントロピーは前半比で **{change:+.1f}%** 変化しました。\n"
+                    report += f"**解釈**: {interpretation}\n\n"
+
+            report += "> **解釈**: Spectral Entropyは周波数成分の多様性を示します。低い値は特定の周波数帯に集中（集中状態）、高い値は広帯域に分散（散漫状態）を示唆します。\n\n"
+
         # バンド比率
         if any(key in results for key in band_ratio_keys):
             report += "### バンド比率指標\n\n"
@@ -513,6 +537,32 @@ def run_full_analysis(data_path, output_dir):
             results['faa_stats'] = faa_result.statistics
         except Exception as exc:
             print(f'警告: FAA解析に失敗しました ({exc})')
+
+        # Spectral Entropy解析
+        try:
+            print('計算中: Spectral Entropy...')
+
+            # PSDから全体のエントロピーを計算
+            se_result = calculate_spectral_entropy(psd_dict)
+
+            # 時系列エントロピーの計算（スペクトログラムから）
+            if tfr_dict:
+                session_start = df['TimeStamp'].iloc[0]
+                se_time_result = calculate_spectral_entropy_time_series(
+                    tfr_dict,
+                    start_time=pd.to_datetime(session_start)
+                )
+
+                print('プロット中: Spectral Entropy...')
+                plot_spectral_entropy(
+                    se_time_result,
+                    img_path=img_dir / 'spectral_entropy.png'
+                )
+                results['spectral_entropy_img'] = 'spectral_entropy.png'
+                results['spectral_entropy_stats'] = se_time_result.statistics
+                results['spectral_entropy_change'] = se_time_result.metadata.get('change_percent')
+        except Exception as exc:
+            print(f'警告: Spectral Entropy解析に失敗しました ({exc})')
 
     # Frontal Midline Theta解析
     fmtheta_result = None

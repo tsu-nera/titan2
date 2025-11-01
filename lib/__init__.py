@@ -56,6 +56,10 @@ from .sensors.eeg import (
     FrontalAsymmetryResult,
     calculate_frontal_asymmetry,
     plot_frontal_asymmetry,
+    SpectralEntropyResult,
+    calculate_spectral_entropy,
+    calculate_spectral_entropy_time_series,
+    plot_spectral_entropy,
 )
 
 from .eeg import (
@@ -112,6 +116,10 @@ __all__ = [
     'FrontalAsymmetryResult',
     'calculate_frontal_asymmetry',
     'plot_frontal_asymmetry',
+    'SpectralEntropyResult',
+    'calculate_spectral_entropy',
+    'calculate_spectral_entropy_time_series',
+    'plot_spectral_entropy',
     # high-level eeg utilities
     'SegmentAnalysisResult',
     'calculate_segment_analysis',
