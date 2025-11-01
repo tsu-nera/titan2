@@ -536,7 +536,12 @@ def run_full_analysis(data_path, output_dir):
     ratios_dict = calculate_band_ratios(df)
 
     print('プロット中: バンド比率...')
-    plot_band_ratios(ratios_dict, img_path=img_dir / 'band_ratios.png')
+    plot_band_ratios(
+        ratios_dict,
+        img_path=img_dir / 'band_ratios.png',
+        clip_percentile=95.0,
+        smooth_window=5
+    )
     results['band_ratios_img'] = 'band_ratios.png'
     results['band_ratios_stats'] = ratios_dict['statistics']
     results['spike_analysis'] = ratios_dict['spike_analysis']

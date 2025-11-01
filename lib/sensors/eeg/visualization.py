@@ -405,7 +405,13 @@ def plot_spectrogram(tfr_dict, bands=None, img_path=None):
     return fig
 
 
-def plot_band_ratios(ratios_dict, resample_interval='10S', img_path=None):
+def plot_band_ratios(
+    ratios_dict,
+    resample_interval='10S',
+    img_path=None,
+    clip_percentile=95.0,
+    smooth_window=5
+):
     """
     バンド比率の時系列をプロット
 
@@ -417,13 +423,17 @@ def plot_band_ratios(ratios_dict, resample_interval='10S', img_path=None):
         リサンプリング間隔
     img_path : str or Path, optional
         保存先パス
+    clip_percentile : float, optional
+        外れ値抑制のための上側パーセンタイル（Noneで無効）
+    smooth_window : int, optional
+        移動平均の窓サイズ（1で無効）
 
     Returns
     -------
     fig : matplotlib.figure.Figure
         生成された図オブジェクト
     """
-    ratio_df = ratios_dict['ratios']
+    ratio_df = ratios_dict['ratios'].copy()
 
     ratio_configs = [
         'リラックス度 (α/β)',
@@ -431,18 +441,41 @@ def plot_band_ratios(ratios_dict, resample_interval='10S', img_path=None):
         '瞑想深度 (θ/α)',
     ]
 
+    # 外れ値のクリッピング
+    if clip_percentile is not None:
+        for ratio_name in ratio_configs:
+            if ratio_name in ratio_df.columns:
+                upper_bound = ratio_df[ratio_name].quantile(clip_percentile / 100.0)
+                ratio_df[ratio_name] = ratio_df[ratio_name].clip(upper=upper_bound)
+
+    # 移動平均による平滑化
+    if smooth_window and smooth_window > 1:
+        for ratio_name in ratio_configs:
+            if ratio_name in ratio_df.columns:
+                ratio_df[ratio_name] = ratio_df[ratio_name].rolling(
+                    window=int(smooth_window),
+                    min_periods=1,
+                    center=True
+                ).median()
+
     fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
     colors = ['green', 'orange', 'purple']
 
     for i, ratio_name in enumerate(ratio_configs):
         if ratio_name in ratio_df.columns:
+            # 生データ（薄い色）
+            raw_data = ratios_dict['ratios'][ratio_name]
+            axes[i].plot(ratios_dict['ratios']['TimeStamp'], raw_data,
+                        color=colors[i], linewidth=1, alpha=0.2, label='生データ')
+
+            # 平滑化データ（濃い色）
             axes[i].plot(ratio_df['TimeStamp'], ratio_df[ratio_name],
-                        color=colors[i], linewidth=2.5, marker='o', markersize=2, alpha=0.9)
+                        color=colors[i], linewidth=2.5, alpha=0.9, label='移動中央値')
+
             axes[i].axhline(y=1.0, color='gray', linestyle='--', alpha=0.5, linewidth=1.5,
                            label='基準値 (1.0)')
             axes[i].set_ylabel(ratio_name, fontsize=11, fontweight='bold')
             axes[i].grid(True, alpha=0.3)
-            axes[i].legend(loc='upper right', fontsize=9)
 
             data_values = ratio_df[ratio_name].dropna()
             if len(data_values) > 0:
@@ -453,6 +486,8 @@ def plot_band_ratios(ratios_dict, resample_interval='10S', img_path=None):
                 mean_val = data_values.mean()
                 axes[i].axhline(y=mean_val, color=colors[i], linestyle=':',
                               alpha=0.4, linewidth=1.5, label=f'平均 ({mean_val:.2f})')
+
+            axes[i].legend(loc='upper right', fontsize=9)
 
     axes[0].set_title(f'脳波指標の時間推移（{resample_interval}ごと平均）',
                      fontsize=14, fontweight='bold')
