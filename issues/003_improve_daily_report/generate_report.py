@@ -45,6 +45,8 @@ from lib import (
     setup_japanese_font,
     calculate_frontal_theta,
     plot_frontal_theta,
+    calculate_frontal_asymmetry,
+    plot_frontal_asymmetry,
     calculate_segment_analysis,
     plot_segment_comparison,
     get_optics_data,
@@ -230,9 +232,10 @@ def generate_markdown_report(data_path, output_dir, results):
     # ========================================
     fmtheta_keys = {'frontal_theta_img', 'frontal_theta_stats', 'frontal_theta_increase'}
     paf_keys = {'paf_img', 'paf_summary', 'iaf', 'paf_time_img', 'paf_time_stats'}
+    faa_keys = {'faa_img', 'faa_stats'}
     band_ratio_keys = {'band_ratios_img', 'band_ratios_stats'}
 
-    if any(key in results for key in (fmtheta_keys | paf_keys | band_ratio_keys)):
+    if any(key in results for key in (fmtheta_keys | paf_keys | faa_keys | band_ratio_keys)):
         report += "## 🎯 特徴的指標分析\n\n"
 
         # Frontal Midline Theta
@@ -266,6 +269,18 @@ def generate_markdown_report(data_path, output_dir, results):
                 report += "**チャネル別詳細**\n\n"
                 report += results['paf_summary'].to_markdown(index=False, floatfmt='.2f')
                 report += "\n\n"
+
+        # Frontal Alpha Asymmetry
+        if any(key in results for key in faa_keys):
+            report += "### Frontal Alpha Asymmetry (FAA)\n\n"
+
+            if 'faa_img' in results:
+                report += f"![Frontal Alpha Asymmetry](img/{results['faa_img']})\n\n"
+
+            if 'faa_stats' in results:
+                report += results['faa_stats'].to_markdown(index=False, floatfmt='.3f')
+                report += "\n\n"
+                report += "> **解釈**: FAA = ln(右) - ln(左)。正値は左半球優位（接近動機・ポジティブ感情）、負値は右半球優位（回避動機・ネガティブ感情）を示唆します。\n\n"
 
         # バンド比率
         if any(key in results for key in band_ratio_keys):
@@ -483,6 +498,20 @@ def run_full_analysis(data_path, output_dir):
             plot_paf_time_evolution(paf_time_dict, df, paf_dict, img_path=img_dir / 'paf_time_evolution.png')
             results['paf_time_img'] = 'paf_time_evolution.png'
             results['paf_time_stats'] = paf_time_dict['stats']
+
+        # FAA解析
+        try:
+            print('計算中: Frontal Alpha Asymmetry...')
+            faa_result = calculate_frontal_asymmetry(df, raw=raw)
+            print('プロット中: Frontal Alpha Asymmetry...')
+            plot_frontal_asymmetry(
+                faa_result,
+                img_path=img_dir / 'frontal_alpha_asymmetry.png'
+            )
+            results['faa_img'] = 'frontal_alpha_asymmetry.png'
+            results['faa_stats'] = faa_result.statistics
+        except Exception as exc:
+            print(f'警告: FAA解析に失敗しました ({exc})')
 
     # Frontal Midline Theta解析
     fmtheta_result = None
