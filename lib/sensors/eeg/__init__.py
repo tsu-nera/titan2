@@ -13,7 +13,7 @@ from .preprocessing import prepare_mne_raw, filter_eeg_quality
 from .frequency import calculate_psd, calculate_spectrogram
 
 # 統計
-from .statistics import calculate_band_statistics
+from .statistics import calculate_band_statistics, calculate_hsi_statistics
 
 # バンド比率
 from .ratios import calculate_band_ratios
@@ -55,6 +55,7 @@ __all__ = [
     'calculate_spectrogram',
     # 統計
     'calculate_band_statistics',
+    'calculate_hsi_statistics',
     # バンド比率
     'calculate_band_ratios',
     # PAF解析

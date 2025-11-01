@@ -26,6 +26,7 @@ sys.path.insert(0, str(project_root))
 from lib import (
     load_mind_monitor_csv,
     calculate_band_statistics,
+    calculate_hsi_statistics,
     prepare_mne_raw,
     filter_eeg_quality,
     calculate_psd,
@@ -137,6 +138,35 @@ def generate_markdown_report(data_path, output_dir, results):
 """
 
     # ========================================
+    # 接続品質（HSI）
+    # ========================================
+    if 'hsi_stats' in results:
+        hsi_data = results['hsi_stats']
+        overall_quality = hsi_data.get('overall_quality')
+        good_ratio = hsi_data.get('good_ratio', 0.0) * 100
+
+        report += "## 📡 接続品質\n\n"
+
+        # 全体評価
+        if overall_quality is not None:
+            if overall_quality <= 1.5:
+                quality_label = '優秀'
+            elif overall_quality <= 2.5:
+                quality_label = '良好'
+            else:
+                quality_label = '要改善'
+
+            report += f"- **総合品質**: {quality_label} (スコア: {overall_quality:.2f})\n"
+            report += f"- **Good品質率**: {good_ratio:.1f}%\n\n"
+
+        # チャネル別詳細
+        if not hsi_data['statistics'].empty:
+            report += "### チャネル別詳細\n\n"
+            report += hsi_data['statistics'].to_markdown(index=False, floatfmt='.2f')
+            report += "\n\n"
+            report += "> **注**: 1.0=Good, 2.0=Medium, 4.0=Bad\n\n"
+
+    # ========================================
     # 分析サマリー
     # ========================================
     report += "## 📊 分析サマリー\n\n"
@@ -194,16 +224,6 @@ def generate_markdown_report(data_path, output_dir, results):
         if 'spectrogram_img' in results:
             report += "### スペクトログラム\n\n"
             report += f"![スペクトログラム](img/{results['spectrogram_img']})\n\n"
-
-        # データ品質情報
-        if 'band_power_quality_ratio' in results:
-            ratio = results['band_power_quality_ratio'] * 100
-            report += "### データ品質\n\n"
-            report += f"- **良好データ使用率**: {ratio:.1f}%\n\n"
-
-        if 'spike_analysis' in results:
-            report += results['spike_analysis'].to_markdown(index=False, floatfmt='.2f')
-            report += "\n\n"
 
     # ========================================
     # 特徴的指標分析
@@ -344,6 +364,11 @@ def run_full_analysis(data_path, output_dir):
         print(f'計測時間: {duration_min:.1f} 分\n')
     else:
         print('計測時間: N/A\n')
+
+    # HSI接続品質統計
+    print('計算中: 接続品質 (HSI)...')
+    hsi_stats = calculate_hsi_statistics(df)
+    results['hsi_stats'] = hsi_stats
 
     # バンド統計
     print('計算中: バンド統計量...')
