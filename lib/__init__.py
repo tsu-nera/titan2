@@ -66,6 +66,8 @@ from .eeg import (
     SegmentAnalysisResult,
     calculate_segment_analysis,
     plot_segment_comparison,
+    MEDITATION_SCORE_WEIGHTS,
+    calculate_meditation_score,
 )
 
 __all__ = [
@@ -124,4 +126,6 @@ __all__ = [
     'SegmentAnalysisResult',
     'calculate_segment_analysis',
     'plot_segment_comparison',
+    'MEDITATION_SCORE_WEIGHTS',
+    'calculate_meditation_score',
 ]

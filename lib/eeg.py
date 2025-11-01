@@ -23,6 +23,20 @@ if TYPE_CHECKING:
     import mne
 
 
+# ========================================
+# 総合スコア算出の重み定数
+# ========================================
+MEDITATION_SCORE_WEIGHTS = {
+    'fmtheta': 0.25,           # Frontal Midline Theta（瞑想深度）
+    'spectral_entropy': 0.20,  # Spectral Entropy（集中度）
+    'theta_alpha_ratio': 0.15, # θ/α比（瞑想深度）
+    'faa': 0.10,               # Frontal Alpha Asymmetry（感情状態）
+    'alpha_beta_ratio': 0.10,  # α/β比（リラックス度）
+    'iaf_stability': 0.10,     # IAF安定性（周波数特性）
+    'quality': 0.10,           # HSI品質
+}
+
+
 @dataclass
 class SegmentAnalysisResult:
     """時間セグメント分析の結果を保持する。"""
@@ -181,6 +195,35 @@ def calculate_segment_analysis(
         if pd.notna(alpha_mean) and pd.notna(theta_mean):
             theta_alpha_ratio = theta_mean - alpha_mean
 
+        # α/β比: 対数値（Bels）なので引き算でlog(alpha/beta)を計算
+        alpha_beta_ratio_log = np.nan
+        if pd.notna(alpha_mean) and pd.notna(beta_mean):
+            alpha_beta_ratio_log = alpha_mean - beta_mean
+            # 実数値に戻す（Belsから線形スケールへ）
+            alpha_beta_ratio = 10 ** alpha_beta_ratio_log
+        else:
+            alpha_beta_ratio = np.nan
+
+        # IAF変動係数
+        iaf_cv = np.nan
+        if iaf_series is not None and len(iaf_slice) > 1:
+            iaf_std = iaf_slice.std()
+            iaf_val = iaf_slice.mean()
+            if pd.notna(iaf_val) and iaf_val != 0:
+                iaf_cv = iaf_std / iaf_val
+
+        # 総合スコア計算（利用可能な指標のみ）
+        segment_score_result = calculate_meditation_score(
+            fmtheta=fm_mean,
+            spectral_entropy=None,  # セグメント単位では未対応
+            theta_alpha_ratio=theta_alpha_ratio,
+            faa=None,  # セグメント単位では未対応
+            alpha_beta_ratio=alpha_beta_ratio,
+            iaf_cv=iaf_cv,
+            hsi_quality=None,  # セグメント単位では未対応（全体品質を使用するオプション）
+        )
+        meditation_score = segment_score_result['total_score']
+
         clean_count = int(clean_mask.sum())
 
         comment_parts = []
@@ -200,6 +243,7 @@ def calculate_segment_analysis(
             'beta_mean': beta_mean,
             'theta_mean': theta_mean,
             'theta_alpha_ratio': theta_alpha_ratio,
+            'meditation_score': meditation_score,
         })
 
     segment_frame = pd.DataFrame(records)
@@ -219,14 +263,13 @@ def calculate_segment_analysis(
     )
     normalized = normalized.reindex(metrics_df.index)
 
-    # ピーク判定（Fmθ、IAF、θ/α比の平均）
-    peak_candidates = normalized[['fmtheta_mean', 'iaf_mean', 'theta_alpha_ratio']]
-    peak_candidates = peak_candidates.dropna(how='all')
-    if peak_candidates.empty:
+    # ピーク判定（総合スコアベース）
+    meditation_scores = segment_frame.set_index('segment_index')['meditation_score']
+    if meditation_scores.dropna().empty:
         peak_idx = None
         peak_score = pd.Series(dtype=float)
     else:
-        peak_score = peak_candidates.mean(axis=1)
+        peak_score = meditation_scores
         peak_idx = int(peak_score.idxmax())
 
     # 表形式（日本語ラベル）
@@ -355,3 +398,168 @@ def plot_segment_comparison(
         plt.close(fig)
 
     return fig
+
+
+def _normalize_indicator(
+    value: float,
+    min_val: float,
+    max_val: float,
+    reverse: bool = False,
+) -> float:
+    """
+    指標を0-1に正規化する。
+
+    Parameters
+    ----------
+    value : float
+        正規化する値
+    min_val : float
+        最小値（この値が0になる）
+    max_val : float
+        最大値（この値が1になる）
+    reverse : bool
+        Trueの場合、値が低いほど良い指標として逆転（例：SE、HSI品質）
+
+    Returns
+    -------
+    float
+        正規化された値（0-1）
+    """
+    if pd.isna(value):
+        return 0.5  # 欠損値はデフォルト0.5
+
+    # クリッピング
+    clipped = np.clip(value, min_val, max_val)
+
+    # 正規化
+    if np.isclose(max_val, min_val):
+        normalized = 0.5
+    else:
+        normalized = (clipped - min_val) / (max_val - min_val)
+
+    # 逆転（低いほど良い指標）
+    if reverse:
+        normalized = 1.0 - normalized
+
+    return normalized
+
+
+def calculate_meditation_score(
+    fmtheta: Optional[float] = None,
+    spectral_entropy: Optional[float] = None,
+    theta_alpha_ratio: Optional[float] = None,
+    faa: Optional[float] = None,
+    alpha_beta_ratio: Optional[float] = None,
+    iaf_cv: Optional[float] = None,
+    hsi_quality: Optional[float] = None,
+    weights: Optional[Dict[str, float]] = None,
+) -> Dict[str, object]:
+    """
+    瞑想セッションの総合スコアを計算する。
+
+    Parameters
+    ----------
+    fmtheta : float, optional
+        Frontal Midline Thetaパワー（μV²）
+    spectral_entropy : float, optional
+        Spectral Entropy（0-1正規化済み）
+    theta_alpha_ratio : float, optional
+        θ/α比（Bels差）
+    faa : float, optional
+        Frontal Alpha Asymmetry（ln(μV²)）
+    alpha_beta_ratio : float, optional
+        α/β比（無次元）
+    iaf_cv : float, optional
+        IAF変動係数（0-1、低いほど安定）
+    hsi_quality : float, optional
+        HSI品質スコア（1.0=Good, 4.0=Bad）
+    weights : dict, optional
+        重み辞書（指定しない場合はMEDITATION_SCORE_WEIGHTSを使用）
+
+    Returns
+    -------
+    dict
+        {
+            'total_score': 総合スコア（0-100点）,
+            'level': 評価レベル（優秀/良好/普通/要改善）,
+            'scores': {指標名: 個別スコア（0-1）},
+            'weights': 使用した重み辞書
+        }
+    """
+    if weights is None:
+        weights = MEDITATION_SCORE_WEIGHTS
+
+    scores = {}
+
+    # Fmθスコア（高いほど良い）
+    if fmtheta is not None:
+        scores['fmtheta'] = _normalize_indicator(fmtheta, min_val=50.0, max_val=200.0)
+    else:
+        scores['fmtheta'] = 0.5
+
+    # SEスコア（低いほど良い、逆転）
+    if spectral_entropy is not None:
+        scores['spectral_entropy'] = _normalize_indicator(
+            spectral_entropy, min_val=0.0, max_val=1.0, reverse=True
+        )
+    else:
+        scores['spectral_entropy'] = 0.5
+
+    # θ/α比スコア（高いほど良い）
+    if theta_alpha_ratio is not None:
+        scores['theta_alpha_ratio'] = _normalize_indicator(
+            theta_alpha_ratio, min_val=-1.0, max_val=1.0
+        )
+    else:
+        scores['theta_alpha_ratio'] = 0.5
+
+    # FAAスコア（正値ほど良い、中心化）
+    if faa is not None:
+        scores['faa'] = _normalize_indicator(faa, min_val=-0.5, max_val=0.5)
+    else:
+        scores['faa'] = 0.5
+
+    # α/β比スコア（高いほど良い）
+    if alpha_beta_ratio is not None:
+        scores['alpha_beta_ratio'] = _normalize_indicator(
+            alpha_beta_ratio, min_val=1.0, max_val=10.0
+        )
+    else:
+        scores['alpha_beta_ratio'] = 0.5
+
+    # IAF安定性スコア（変動係数が低いほど良い、逆転）
+    if iaf_cv is not None:
+        scores['iaf_stability'] = _normalize_indicator(
+            iaf_cv, min_val=0.0, max_val=0.05, reverse=True
+        )
+    else:
+        scores['iaf_stability'] = 0.5
+
+    # 品質スコア（1.0=Good、4.0=Bad、逆変換）
+    if hsi_quality is not None:
+        scores['quality'] = _normalize_indicator(
+            hsi_quality, min_val=1.0, max_val=4.0, reverse=True
+        )
+    else:
+        scores['quality'] = 0.5
+
+    # 重み付け平均で総合スコア算出
+    total_score = sum(scores[key] * weights[key] for key in scores.keys())
+    total_score_100 = total_score * 100.0
+
+    # 評価レベル判定
+    if total_score_100 >= 80:
+        level = "優秀"
+    elif total_score_100 >= 65:
+        level = "良好"
+    elif total_score_100 >= 50:
+        level = "普通"
+    else:
+        level = "要改善"
+
+    return {
+        'total_score': total_score_100,
+        'level': level,
+        'scores': scores,
+        'weights': weights,
+    }

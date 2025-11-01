@@ -52,6 +52,7 @@ from lib import (
     plot_spectral_entropy,
     calculate_segment_analysis,
     plot_segment_comparison,
+    calculate_meditation_score,
     get_optics_data,
     analyze_fnirs,
     plot_fnirs_muse_style,
@@ -176,6 +177,31 @@ def generate_markdown_report(data_path, output_dir, results):
     # ========================================
     report += "## 📊 分析サマリー\n\n"
 
+    # 総合スコア
+    if 'session_score' in results:
+        report += "### 総合評価\n\n"
+        report += f"- **総合スコア**: {results['session_score']:.1f}/100 ({results['session_level']})\n"
+
+        # スコア内訳
+        if 'session_score_breakdown' in results:
+            report += "\n**スコア内訳**\n\n"
+            breakdown = results['session_score_breakdown']
+            score_labels = {
+                'fmtheta': '瞑想深度 (Fmθ)',
+                'spectral_entropy': '集中度 (SE)',
+                'theta_alpha_ratio': '瞑想深度 (θ/α)',
+                'faa': '感情状態 (FAA)',
+                'alpha_beta_ratio': 'リラックス度 (α/β)',
+                'iaf_stability': '周波数安定性 (IAF)',
+                'quality': '測定品質 (HSI)',
+            }
+            for key, label in score_labels.items():
+                if key in breakdown:
+                    score_100 = breakdown[key] * 100
+                    level = "優秀" if score_100 >= 80 else "良好" if score_100 >= 65 else "普通" if score_100 >= 50 else "要改善"
+                    report += f"- {label}: {score_100:.1f}/100 ({level})\n"
+        report += "\n"
+
     # セッション総合評価
     if 'band_ratios_stats' in results:
         report += "### セッション総合評価\n\n"
@@ -203,7 +229,7 @@ def generate_markdown_report(data_path, output_dir, results):
         if peak_range:
             report += "### ピークパフォーマンス\n\n"
             if peak_score is not None:
-                report += f"- **最高パフォーマンス区間**: {peak_range} (スコア: {peak_score:.2f})\n\n"
+                report += f"- **最高パフォーマンス区間**: {peak_range} (スコア: {peak_score:.1f}/100)\n\n"
             else:
                 report += f"- **最高パフォーマンス区間**: {peak_range}\n\n"
 
@@ -626,6 +652,76 @@ def run_full_analysis(data_path, output_dir):
     results['band_ratios_img'] = 'band_ratios.png'
     results['band_ratios_stats'] = ratios_dict['statistics']
     results['spike_analysis'] = ratios_dict['spike_analysis']
+
+    # セッション総合スコア計算
+    try:
+        print('計算中: セッション総合スコア...')
+
+        # 各指標から必要な値を抽出
+        fmtheta_val = None
+        if fmtheta_result and 'frontal_theta_stats' in results:
+            # 平均値を取得
+            stats_df = results['frontal_theta_stats']
+            fmtheta_row = stats_df[stats_df['指標'] == '平均値']
+            if not fmtheta_row.empty:
+                fmtheta_val = fmtheta_row['値'].iloc[0]
+
+        se_val = None
+        if 'spectral_entropy_stats' in results:
+            se_stats_df = results['spectral_entropy_stats']
+            se_row = se_stats_df[se_stats_df['指標'] == '平均SE']
+            if not se_row.empty:
+                se_val = se_row['値'].iloc[0]
+
+        theta_alpha_val = None
+        alpha_beta_val = None
+        if 'band_ratios_stats' in results:
+            ratios_stats_df = results['band_ratios_stats']
+            # θ/α比
+            theta_alpha_row = ratios_stats_df[ratios_stats_df['指標'] == '瞑想深度 (θ/α)']
+            if not theta_alpha_row.empty:
+                theta_alpha_val = theta_alpha_row['平均値'].iloc[0]
+            # α/β比
+            alpha_beta_row = ratios_stats_df[ratios_stats_df['指標'] == 'リラックス度 (α/β)']
+            if not alpha_beta_row.empty:
+                alpha_beta_val = alpha_beta_row['平均値'].iloc[0]
+
+        faa_val = None
+        if 'faa_stats' in results:
+            faa_stats_df = results['faa_stats']
+            faa_row = faa_stats_df[faa_stats_df['指標'] == '平均FAA']
+            if not faa_row.empty:
+                faa_val = faa_row['値'].iloc[0]
+
+        iaf_cv_val = None
+        if 'paf_time_stats' in results:
+            paf_stats = results['paf_time_stats']
+            if '変動係数 (%)' in paf_stats:
+                iaf_cv_val = paf_stats['変動係数 (%)'] / 100.0  # パーセントから0-1に変換
+
+        hsi_quality_val = None
+        if 'hsi_stats' in results:
+            hsi_stats = results['hsi_stats']
+            if 'avg_quality' in hsi_stats:
+                hsi_quality_val = hsi_stats['avg_quality']
+
+        # 総合スコア計算
+        session_score = calculate_meditation_score(
+            fmtheta=fmtheta_val,
+            spectral_entropy=se_val,
+            theta_alpha_ratio=theta_alpha_val,
+            faa=faa_val,
+            alpha_beta_ratio=alpha_beta_val,
+            iaf_cv=iaf_cv_val,
+            hsi_quality=hsi_quality_val,
+        )
+
+        results['session_score'] = session_score['total_score']
+        results['session_level'] = session_score['level']
+        results['session_score_breakdown'] = session_score['scores']
+
+    except Exception as exc:
+        print(f'警告: 総合スコア計算に失敗しました ({exc})')
 
     # レポート生成
     generate_markdown_report(data_path, output_dir, results)
