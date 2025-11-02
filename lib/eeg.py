@@ -27,13 +27,11 @@ if TYPE_CHECKING:
 # 総合スコア算出の重み定数
 # ========================================
 MEDITATION_SCORE_WEIGHTS = {
-    'fmtheta': 0.25,           # Frontal Midline Theta（瞑想深度）
-    'spectral_entropy': 0.20,  # Spectral Entropy（集中度）
-    'theta_alpha_ratio': 0.15, # θ/α比（瞑想深度）
-    'faa': 0.10,               # Frontal Alpha Asymmetry（感情状態）
-    'alpha_beta_ratio': 0.10,  # α/β比（リラックス度）
-    'iaf_stability': 0.10,     # IAF安定性（周波数特性）
-    'quality': 0.10,           # HSI品質
+    'fmtheta': 0.3125,          # Frontal Midline Theta（瞑想深度）
+    'spectral_entropy': 0.25,   # Spectral Entropy（集中度）
+    'theta_alpha_ratio': 0.1875, # θ/α比（瞑想深度）
+    'alpha_beta_ratio': 0.125,  # α/β比（リラックス度）
+    'iaf_stability': 0.125,     # IAF安定性（周波数特性）
 }
 
 
@@ -498,9 +496,10 @@ def calculate_meditation_score(
         scores['fmtheta'] = 0.5
 
     # SEスコア（低いほど良い、逆転）
+    # 注: SEは通常0.7-1.0の範囲に収まるため、この範囲で正規化
     if spectral_entropy is not None:
         scores['spectral_entropy'] = _normalize_indicator(
-            spectral_entropy, min_val=0.0, max_val=1.0, reverse=True
+            spectral_entropy, min_val=0.7, max_val=1.0, reverse=True
         )
     else:
         scores['spectral_entropy'] = 0.5
@@ -543,8 +542,8 @@ def calculate_meditation_score(
     else:
         scores['quality'] = 0.5
 
-    # 重み付け平均で総合スコア算出
-    total_score = sum(scores[key] * weights[key] for key in scores.keys())
+    # 重み付け平均で総合スコア算出（weightsに存在するキーのみ使用）
+    total_score = sum(scores[key] * weights[key] for key in weights.keys() if key in scores)
     total_score_100 = total_score * 100.0
 
     # 評価レベル判定

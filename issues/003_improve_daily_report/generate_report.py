@@ -13,6 +13,7 @@ from pathlib import Path
 import argparse
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
@@ -190,10 +191,8 @@ def generate_markdown_report(data_path, output_dir, results):
                 'fmtheta': '瞑想深度 (Fmθ)',
                 'spectral_entropy': '集中度 (SE)',
                 'theta_alpha_ratio': '瞑想深度 (θ/α)',
-                'faa': '感情状態 (FAA)',
                 'alpha_beta_ratio': 'リラックス度 (α/β)',
                 'iaf_stability': '周波数安定性 (IAF)',
-                'quality': '測定品質 (HSI)',
             }
             for key, label in score_labels.items():
                 if key in breakdown:
@@ -675,13 +674,28 @@ def run_full_analysis(data_path, output_dir):
 
         theta_alpha_val = None
         alpha_beta_val = None
-        if 'band_ratios_stats' in results:
+
+        # θ/α比: セグメント分析のBels差分を優先使用（より一貫性のある評価）
+        if 'segment_table' in results:
+            segment_df = results['segment_table']
+            if 'θ/α比 (Bels)' in segment_df.columns:
+                theta_alpha_values = segment_df['θ/α比 (Bels)'].dropna()
+                if len(theta_alpha_values) > 0:
+                    theta_alpha_val = theta_alpha_values.mean()
+
+        # セグメント分析で取得できない場合、バンド比率から取得
+        if theta_alpha_val is None and 'band_ratios_stats' in results:
             ratios_stats_df = results['band_ratios_stats']
-            # θ/α比
             theta_alpha_row = ratios_stats_df[ratios_stats_df['指標'] == '瞑想深度 (θ/α)']
             if not theta_alpha_row.empty:
-                theta_alpha_val = theta_alpha_row['平均値'].iloc[0]
-            # α/β比
+                # バンド比率は生の比率なので、Belsに変換（10 * log10(ratio)）
+                raw_ratio = theta_alpha_row['平均値'].iloc[0]
+                if raw_ratio > 0:
+                    theta_alpha_val = 10 * np.log10(raw_ratio)
+
+        # α/β比: バンド比率統計から取得
+        if 'band_ratios_stats' in results:
+            ratios_stats_df = results['band_ratios_stats']
             alpha_beta_row = ratios_stats_df[ratios_stats_df['指標'] == 'リラックス度 (α/β)']
             if not alpha_beta_row.empty:
                 alpha_beta_val = alpha_beta_row['平均値'].iloc[0]
@@ -694,7 +708,20 @@ def run_full_analysis(data_path, output_dir):
                 faa_val = faa_row['値'].iloc[0]
 
         iaf_cv_val = None
-        if 'paf_time_stats' in results:
+
+        # セグメント分析からIAF変動係数を優先的に計算（より安定した評価）
+        if 'segment_table' in results:
+            segment_df = results['segment_table']
+            if 'IAF平均 (Hz)' in segment_df.columns:
+                iaf_values = segment_df['IAF平均 (Hz)'].dropna()
+                if len(iaf_values) > 1:
+                    iaf_mean = iaf_values.mean()
+                    iaf_std = iaf_values.std()
+                    if iaf_mean > 0:
+                        iaf_cv_val = iaf_std / iaf_mean
+
+        # セグメント分析で取得できない場合、PAF時間推移から取得
+        if iaf_cv_val is None and 'paf_time_stats' in results:
             paf_stats = results['paf_time_stats']
             if '変動係数 (%)' in paf_stats:
                 iaf_cv_val = paf_stats['変動係数 (%)'] / 100.0  # パーセントから0-1に変換
