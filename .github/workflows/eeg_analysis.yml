@@ -1,0 +1,124 @@
+name: EEG Analysis
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: '分析する日付（例: 2025-11-04）省略時は最新ファイル'
+        required: false
+        default: 'latest'
+        type: string
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30  # 最大30分（通常5-10分）
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python環境セットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 依存関係インストール
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Google Drive認証情報を設定
+        env:
+          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+        run: |
+          mkdir -p /tmp/credentials
+          echo "$GDRIVE_CREDENTIALS" > /tmp/credentials/gdrive.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials/gdrive.json" >> $GITHUB_ENV
+
+      - name: Google DriveからCSVファイルを取得
+        env:
+          FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+        run: |
+          # 一時ディレクトリ作成
+          mkdir -p /tmp/data
+
+          # CSVファイルをダウンロード
+          if [ "${{ github.event.inputs.date }}" = "latest" ]; then
+            echo "最新ファイルをダウンロード中..."
+            python scripts/fetch_from_gdrive.py \
+              --folder-id "$FOLDER_ID" \
+              --download latest \
+              --output /tmp/data
+          else
+            echo "日付指定でダウンロード中: ${{ github.event.inputs.date }}"
+            python scripts/fetch_from_gdrive.py \
+              --folder-id "$FOLDER_ID" \
+              --download "${{ github.event.inputs.date }}" \
+              --output /tmp/data
+          fi
+
+          # ダウンロードしたCSVファイルのパスを環境変数に保存
+          CSV_FILE=$(ls /tmp/data/*.csv | head -n 1)
+          echo "CSV_PATH=$CSV_FILE" >> $GITHUB_ENV
+          echo "ダウンロード完了: $CSV_FILE"
+
+      - name: 脳波分析を実行
+        run: |
+          # タイムスタンプ生成
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          OUTPUT_DIR="reports/${TIMESTAMP}"
+
+          echo "分析開始..."
+          echo "  入力CSV: $CSV_PATH"
+          echo "  出力先: $OUTPUT_DIR"
+
+          # レポート生成
+          python issues/003_improve_daily_report/generate_report.py \
+            --data "$CSV_PATH" \
+            --output "$OUTPUT_DIR"
+
+          echo "OUTPUT_DIR=$OUTPUT_DIR" >> $GITHUB_ENV
+          echo "分析完了: $OUTPUT_DIR"
+
+      - name: レポートをGitにコミット
+        run: |
+          git config --local user.name "GitHub Actions"
+          git config --local user.email "actions@github.com"
+
+          # レポートディレクトリを追加
+          git add "$OUTPUT_DIR"
+
+          # コミット
+          CSV_NAME=$(basename "$CSV_PATH")
+          COMMIT_DATE=$(date +'%Y-%m-%d %H:%M:%S')
+
+          git commit -m "Add EEG analysis report - ${COMMIT_DATE}" \
+            -m "" \
+            -m "Generated from workflow run: ${{ github.run_number }}" \
+            -m "Input CSV: ${CSV_NAME}" \
+            -m "Output: ${OUTPUT_DIR}" \
+            -m "" \
+            -m "Generated with GitHub Actions"
+
+          # プッシュ
+          git push
+
+      - name: クリーンアップ
+        if: always()
+        run: |
+          # 一時ファイル削除
+          rm -rf /tmp/data
+          rm -rf /tmp/credentials
+
+      - name: 分析結果サマリー
+        if: success()
+        run: |
+          echo "✅ 脳波分析が完了しました"
+          echo ""
+          echo "📊 レポート: $OUTPUT_DIR/REPORT.md"
+          echo "📁 画像: $OUTPUT_DIR/img/"
+          echo ""
+          echo "🔗 GitHubでレポートを閲覧:"
+          echo "   https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/$OUTPUT_DIR/REPORT.md"

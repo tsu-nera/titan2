@@ -21,5 +21,9 @@ jupyterlab>=4.0
 # Markdown Table Support
 tabulate>=0.9
 
+# Google Drive API (for Issue 004)
+google-auth>=2.23.0
+google-api-python-client>=2.100.0
+
 # Optional: Japanese Font Support
 # Install system font: sudo apt install fonts-noto-cjk
