@@ -22,6 +22,12 @@ titan
 __pycache__/
 output/
 
-# Large CSV data files
+# Large CSV data files (Issue 004)
 *.csv
-data/samples/*.csv
+*.zip
+data/
+private/
+
+# Temporary data
+/tmp_data/
+/tmp/
