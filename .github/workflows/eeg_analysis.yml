@@ -68,7 +68,7 @@ jobs:
         run: |
           # タイムスタンプ生成
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-          OUTPUT_DIR="reports/${TIMESTAMP}"
+          OUTPUT_DIR="/tmp/eeg_reports/${TIMESTAMP}"
 
           echo "分析開始..."
           echo "  入力CSV: $CSV_PATH"
@@ -79,46 +79,23 @@ jobs:
             --data "$CSV_PATH" \
             --output "$OUTPUT_DIR"
 
-          echo "OUTPUT_DIR=$OUTPUT_DIR" >> $GITHUB_ENV
-          echo "分析完了: $OUTPUT_DIR"
-
-      - name: レポートをGitにコミット
-        run: |
-          git config --local user.name "GitHub Actions"
-          git config --local user.email "actions@github.com"
-
-          # レポートディレクトリを追加
-          git add "$OUTPUT_DIR"
-
-          # コミット情報準備
+          # 環境変数に保存
           CSV_NAME=$(basename "$CSV_PATH")
           COMMIT_DATE=$(date +'%Y-%m-%d %H:%M:%S')
 
-          git commit -m "Add EEG analysis report - ${COMMIT_DATE}" \
-            -m "" \
-            -m "Generated from workflow run: ${{ github.run_number }}" \
-            -m "Input CSV: ${CSV_NAME}" \
-            -m "Output: ${OUTPUT_DIR}" \
-            -m "" \
-            -m "Generated with GitHub Actions"
-
-          # プッシュ
-          git push
-
-          # 環境変数に保存（Issue作成で使用）
+          echo "OUTPUT_DIR=$OUTPUT_DIR" >> $GITHUB_ENV
           echo "CSV_NAME=$CSV_NAME" >> $GITHUB_ENV
           echo "COMMIT_DATE=$COMMIT_DATE" >> $GITHUB_ENV
+          echo "分析完了: $OUTPUT_DIR"
 
       - name: GitHub Issueにレポートを投稿
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # REPORT.mdを読み込み、画像パスをGitHub URLに変換
           REPORT_MD="${OUTPUT_DIR}/REPORT.md"
-          REPO_URL="https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}"
 
-          # 画像パスを絶対URLに変換
-          sed "s|img/|${REPO_URL}/${OUTPUT_DIR}/img/|g" "$REPORT_MD" > /tmp/issue_body.md
+          # 画像参照を削除したテキスト版レポートを作成
+          grep -v "!\[.*\](img/" "$REPORT_MD" > /tmp/report_text.md
 
           # セッション情報ヘッダーを作成
           echo "## 📊 脳波分析レポート" > /tmp/issue_header.md
@@ -131,7 +108,7 @@ jobs:
           echo "" >> /tmp/issue_header.md
 
           # ヘッダーとレポートを結合
-          cat /tmp/issue_header.md /tmp/issue_body.md > /tmp/final_issue.md
+          cat /tmp/issue_header.md /tmp/report_text.md > /tmp/final_issue.md
 
           # Issue作成
           ISSUE_URL=$(gh issue create \
@@ -141,7 +118,39 @@ jobs:
             --label "eeg-report,automated")
 
           echo "✅ Issue作成完了: ${ISSUE_URL}"
+
+          # Issue番号を抽出
+          ISSUE_NUMBER=$(echo "$ISSUE_URL" | grep -oP '/issues/\K\d+')
+          echo "Issue番号: #${ISSUE_NUMBER}"
+
+          # 画像を1枚ずつコメントで添付
+          echo "画像をアップロード中..."
+          for img in "${OUTPUT_DIR}"/img/*.png; do
+            if [ -f "$img" ]; then
+              IMG_NAME=$(basename "$img")
+              echo "  アップロード: ${IMG_NAME}"
+
+              # GitHub APIで画像をアップロード
+              UPLOAD_RESPONSE=$(curl -s -X POST \
+                -H "Authorization: token $GH_TOKEN" \
+                -H "Content-Type: image/png" \
+                -H "Accept: application/vnd.github+json" \
+                --data-binary "@${img}" \
+                "https://uploads.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/assets?name=${IMG_NAME}")
+
+              # アップロードされた画像URLを取得
+              IMG_URL=$(echo "$UPLOAD_RESPONSE" | jq -r '.browser_download_url // .url // empty')
+
+              if [ -n "$IMG_URL" ]; then
+                # コメントで画像を追加
+                gh issue comment "${ISSUE_URL}" --body "![${IMG_NAME}](${IMG_URL})" 2>/dev/null || \
+                gh issue comment "${ISSUE_URL}" --body "**${IMG_NAME}**"
+              fi
+            fi
+          done
+
           echo "ISSUE_URL=${ISSUE_URL}" >> $GITHUB_ENV
+          echo "✅ 画像アップロード完了"
 
       - name: クリーンアップ
         if: always()
@@ -149,17 +158,15 @@ jobs:
           # 一時ファイル削除
           rm -rf /tmp/data
           rm -rf /tmp/credentials
+          rm -rf /tmp/eeg_reports
 
       - name: 分析結果サマリー
         if: success()
         run: |
           echo "✅ 脳波分析が完了しました"
           echo ""
-          echo "📊 レポート: $OUTPUT_DIR/REPORT.md"
-          echo "📁 画像: $OUTPUT_DIR/img/"
-          echo ""
-          echo "🔗 スマホから閲覧（推奨）:"
+          echo "📊 GitHub Issueでレポートを閲覧:"
           echo "   ${ISSUE_URL}"
           echo ""
-          echo "🔗 GitHubリポジトリで閲覧:"
-          echo "   https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/$OUTPUT_DIR/REPORT.md"
+          echo "💡 スマホからGitHub Mobileアプリで閲覧できます"
+          echo "   Issues → eeg-report ラベル"
