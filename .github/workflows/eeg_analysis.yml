@@ -90,7 +90,7 @@ jobs:
           # レポートディレクトリを追加
           git add "$OUTPUT_DIR"
 
-          # コミット
+          # コミット情報準備
           CSV_NAME=$(basename "$CSV_PATH")
           COMMIT_DATE=$(date +'%Y-%m-%d %H:%M:%S')
 
@@ -104,6 +104,44 @@ jobs:
 
           # プッシュ
           git push
+
+          # 環境変数に保存（Issue作成で使用）
+          echo "CSV_NAME=$CSV_NAME" >> $GITHUB_ENV
+          echo "COMMIT_DATE=$COMMIT_DATE" >> $GITHUB_ENV
+
+      - name: GitHub Issueにレポートを投稿
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # REPORT.mdを読み込み、画像パスをGitHub URLに変換
+          REPORT_MD="${OUTPUT_DIR}/REPORT.md"
+          REPO_URL="https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}"
+
+          # 画像パスを絶対URLに変換
+          sed "s|img/|${REPO_URL}/${OUTPUT_DIR}/img/|g" "$REPORT_MD" > /tmp/issue_body.md
+
+          # セッション情報ヘッダーを作成
+          echo "## 📊 脳波分析レポート" > /tmp/issue_header.md
+          echo "" >> /tmp/issue_header.md
+          echo "- 計測日時: ${COMMIT_DATE}" >> /tmp/issue_header.md
+          echo "- 入力CSV: ${CSV_NAME}" >> /tmp/issue_header.md
+          echo "- ワークフロー実行: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> /tmp/issue_header.md
+          echo "" >> /tmp/issue_header.md
+          echo "---" >> /tmp/issue_header.md
+          echo "" >> /tmp/issue_header.md
+
+          # ヘッダーとレポートを結合
+          cat /tmp/issue_header.md /tmp/issue_body.md > /tmp/final_issue.md
+
+          # Issue作成
+          ISSUE_URL=$(gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "[EEG Report] ${COMMIT_DATE}" \
+            --body-file /tmp/final_issue.md \
+            --label "eeg-report,automated")
+
+          echo "✅ Issue作成完了: ${ISSUE_URL}"
+          echo "ISSUE_URL=${ISSUE_URL}" >> $GITHUB_ENV
 
       - name: クリーンアップ
         if: always()
@@ -120,5 +158,8 @@ jobs:
           echo "📊 レポート: $OUTPUT_DIR/REPORT.md"
           echo "📁 画像: $OUTPUT_DIR/img/"
           echo ""
-          echo "🔗 GitHubでレポートを閲覧:"
+          echo "🔗 スマホから閲覧（推奨）:"
+          echo "   ${ISSUE_URL}"
+          echo ""
+          echo "🔗 GitHubリポジトリで閲覧:"
           echo "   https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/$OUTPUT_DIR/REPORT.md"
