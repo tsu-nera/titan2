@@ -114,8 +114,7 @@ jobs:
           ISSUE_URL=$(gh issue create \
             --repo "${{ github.repository }}" \
             --title "[EEG Report] ${COMMIT_DATE}" \
-            --body-file /tmp/final_issue.md \
-            --label "eeg-report,automated")
+            --body-file /tmp/final_issue.md)
 
           echo "✅ Issue作成完了: ${ISSUE_URL}"
 
