@@ -128,9 +128,6 @@ jobs:
         run: |
           REPORT_MD="${OUTPUT_DIR}/REPORT.md"
 
-          # 画像参照を削除したテキスト版レポートを作成
-          grep -v "!\[.*\](img/" "$REPORT_MD" > /tmp/report_text.md
-
           # セッション情報ヘッダーを作成
           echo "## 📊 脳波分析レポート" > /tmp/issue_header.md
           echo "" >> /tmp/issue_header.md
@@ -142,26 +139,12 @@ jobs:
           echo "---" >> /tmp/issue_header.md
           echo "" >> /tmp/issue_header.md
 
+          # 画像パスをReleaseのURLに置換（元の順序を保持）
+          sed "s|img/\([^)]*\.png\)|https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/\1|g" \
+            "$REPORT_MD" > /tmp/report_with_images.md
+
           # ヘッダーとレポートを結合
-          cat /tmp/issue_header.md /tmp/report_text.md > /tmp/final_issue.md
-
-          # 画像セクションを追加
-          echo "" >> /tmp/final_issue.md
-          echo "---" >> /tmp/final_issue.md
-          echo "" >> /tmp/final_issue.md
-          echo "## 📈 グラフ" >> /tmp/final_issue.md
-          echo "" >> /tmp/final_issue.md
-
-          # 各画像へのリンクを追加
-          for img in "${OUTPUT_DIR}"/img/*.png; do
-            if [ -f "$img" ]; then
-              IMG_NAME=$(basename "$img")
-              IMG_URL="https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/${IMG_NAME}"
-              echo "### ${IMG_NAME}" >> /tmp/final_issue.md
-              echo "![${IMG_NAME}](${IMG_URL})" >> /tmp/final_issue.md
-              echo "" >> /tmp/final_issue.md
-            fi
-          done
+          cat /tmp/issue_header.md /tmp/report_with_images.md > /tmp/final_issue.md
 
           # Issue作成
           ISSUE_URL=$(gh issue create \
