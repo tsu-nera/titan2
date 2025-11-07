@@ -41,13 +41,13 @@ def _prepare_raw_for_fmtheta(
     """AF7/AF8のみ抽出したRawオブジェクトを取得。"""
     mne_dict = prepare_mne_raw(df, sfreq=sfreq)
     if not mne_dict:
-        raise ValueError('RAWデータを構築できませんでした。')
+        raise ValueError('Failed to construct RAW data.')
 
     raw = mne_dict['raw'].copy()
     available = set(raw.ch_names)
     missing = [ch for ch in channels if ch not in available]
     if missing:
-        raise ValueError(f'指定チャネルが存在しません: {missing}')
+        raise ValueError(f'Specified channels not found: {missing}')
 
     raw.pick_channels(list(channels))
     return raw
@@ -140,12 +140,12 @@ def calculate_frontal_theta(
 
     series = power_series.dropna()
     if series.empty:
-        raise ValueError('Fmθの時間シリーズが空です。')
+        raise ValueError('Fmθ time series is empty.')
 
     stats = {
-        '平均値 (μV²)': series.mean(),
-        '中央値 (μV²)': series.median(),
-        '標準偏差 (μV²)': series.std(),
+        'Mean (μV²)': series.mean(),
+        'Median (μV²)': series.median(),
+        'Std Dev (μV²)': series.std(),
     }
 
     midpoint = series.index[0] + (series.index[-1] - series.index[0]) / 2
@@ -162,12 +162,12 @@ def calculate_frontal_theta(
 
     stats_df = pd.DataFrame(
         [
-            {'指標': '平均値', '値': stats['平均値 (μV²)'], '単位': 'μV²'},
-            {'指標': '中央値', '値': stats['中央値 (μV²)'], '単位': 'μV²'},
-            {'指標': '標準偏差', '値': stats['標準偏差 (μV²)'], '単位': 'μV²'},
-            {'指標': '前半平均', '値': first_mean, '単位': 'μV²'},
-            {'指標': '後半平均', '値': second_mean, '単位': 'μV²'},
-            {'指標': '増加率 (後半/前半)', '値': increase_rate, '単位': '%'},
+            {'Metric': 'Mean', 'Value': stats['Mean (μV²)'], 'Unit': 'μV²'},
+            {'Metric': 'Median', 'Value': stats['Median (μV²)'], 'Unit': 'μV²'},
+            {'Metric': 'Std Dev', 'Value': stats['Std Dev (μV²)'], 'Unit': 'μV²'},
+            {'Metric': 'First Half Mean', 'Value': first_mean, 'Unit': 'μV²'},
+            {'Metric': 'Second Half Mean', 'Value': second_mean, 'Unit': 'μV²'},
+            {'Metric': 'Increase Rate (2nd/1st)', 'Value': increase_rate, 'Unit': '%'},
         ]
     )
 
@@ -226,7 +226,7 @@ def plot_frontal_theta(
 
     series = result.time_series
     if series.empty:
-        raise ValueError('Fmθプロット用の時系列が空です。')
+        raise ValueError('Fmθ time series for plotting is empty.')
 
     elapsed_minutes = (series.index - series.index[0]).total_seconds() / 60.0
 

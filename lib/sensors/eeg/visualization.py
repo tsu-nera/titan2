@@ -67,7 +67,7 @@ def plot_band_power_time_series(
     band_data = band_data.sort_index()
 
     if band_data.empty or band_data.shape[1] == 0:
-        raise ValueError('指定したバンドのデータが見つかりません。')
+        raise ValueError('No data found for specified bands.')
 
     band_data = band_data.interpolate(method='time').ffill().bfill()
 
@@ -86,7 +86,7 @@ def plot_band_power_time_series(
 
     # Convert time axis to minutes (elapsed time from start)
     if len(band_data.index) == 0:
-        raise ValueError('バンドデータの時間軸が空です。')
+        raise ValueError('Band data time axis is empty.')
 
     elapsed_minutes = (band_data.index - band_data.index[0]).total_seconds() / 60.0
 
@@ -172,9 +172,9 @@ def plot_psd(psd_dict, bands=None, img_path=None):
 
     ax.set_xlim(0, min(50, freqs.max()))
     ax.set_yscale('log')
-    ax.set_xlabel('周波数 (Hz)', fontsize=12)
-    ax.set_ylabel('パワースペクトル密度 (μV²/Hz)', fontsize=12)
-    ax.set_title('脳波のパワースペクトル密度（PSD）', fontsize=14, fontweight='bold')
+    ax.set_xlabel('Frequency (Hz)', fontsize=12)
+    ax.set_ylabel('Power Spectral Density (μV²/Hz)', fontsize=12)
+    ax.set_title('EEG Power Spectral Density (PSD)', fontsize=14, fontweight='bold')
     ax.grid(True, which='both', alpha=0.3)
     ax.legend(loc='upper right', fontsize=10)
     plt.tight_layout()
@@ -235,11 +235,11 @@ def plot_psd_time_series(
     else:
         missing = [ch for ch in channels if ch not in raw.ch_names]
         if missing:
-            raise ValueError(f'Rawオブジェクトに存在しないチャネル: {missing}')
+            raise ValueError(f'Channels not found in Raw object: {missing}')
 
     window_sec = min(window_sec, total_duration)
     if window_sec <= 0:
-        raise ValueError('window_sec が無効です。計測時間より短い値を指定してください。')
+        raise ValueError('Invalid window_sec. Please specify a value shorter than the measurement duration.')
 
     step_sec = max(step_sec, 1.0 / sfreq)
 
@@ -312,7 +312,7 @@ def plot_psd_time_series(
 
     ax.set_xlabel('Time (min)', fontsize=12)
     ax.set_ylabel('PSD (μV²/Hz)', fontsize=12)
-    ax.set_title('PSDの時間推移', fontsize=16, fontweight='bold', pad=20)
+    ax.set_title('PSD Time Series', fontsize=16, fontweight='bold', pad=20)
     ax.legend(loc='upper right', fontsize=11, framealpha=0.8)
     ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
 
@@ -387,14 +387,14 @@ def plot_spectrogram(tfr_dict, bands=None, img_path=None):
                 ax.text(times[-1] * 0.02, (low + high) / 2, band,
                        color='white', fontsize=10, fontweight='bold')
 
-    ax.set_xlabel('時間 (秒)', fontsize=12)
-    ax.set_ylabel('周波数 (Hz)', fontsize=12)
-    ax.set_title(f'スペクトログラム - {channel.replace("RAW_", "")}',
+    ax.set_xlabel('Time (seconds)', fontsize=12)
+    ax.set_ylabel('Frequency (Hz)', fontsize=12)
+    ax.set_title(f'Spectrogram - {channel.replace("RAW_", "")}',
                 fontsize=14, fontweight='bold')
     ax.set_ylim(0, fmax)
 
     cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label('パワー (dB, μV²)', fontsize=11)
+    cbar.set_label('Power (dB, μV²)', fontsize=11)
 
     plt.tight_layout()
 
@@ -436,9 +436,9 @@ def plot_band_ratios(
     ratio_df = ratios_dict['ratios'].copy()
 
     ratio_configs = [
-        'リラックス度 (α/β)',
-        '集中度 (β/θ)',
-        '瞑想深度 (θ/α)',
+        'Relaxation (α/β)',
+        'Concentration (β/θ)',
+        'Meditation Depth (θ/α)',
     ]
 
     # 外れ値のクリッピング
@@ -463,17 +463,17 @@ def plot_band_ratios(
 
     for i, ratio_name in enumerate(ratio_configs):
         if ratio_name in ratio_df.columns:
-            # 生データ（薄い色）
+            # Raw data (light color)
             raw_data = ratios_dict['ratios'][ratio_name]
             axes[i].plot(ratios_dict['ratios']['TimeStamp'], raw_data,
-                        color=colors[i], linewidth=1, alpha=0.2, label='生データ')
+                        color=colors[i], linewidth=1, alpha=0.2, label='Raw Data')
 
-            # 平滑化データ（濃い色）
+            # Smoothed data (dark color)
             axes[i].plot(ratio_df['TimeStamp'], ratio_df[ratio_name],
-                        color=colors[i], linewidth=2.5, alpha=0.9, label='移動中央値')
+                        color=colors[i], linewidth=2.5, alpha=0.9, label='Rolling Median')
 
             axes[i].axhline(y=1.0, color='gray', linestyle='--', alpha=0.5, linewidth=1.5,
-                           label='基準値 (1.0)')
+                           label='Baseline (1.0)')
             axes[i].set_ylabel(ratio_name, fontsize=11, fontweight='bold')
             axes[i].grid(True, alpha=0.3)
 
@@ -485,13 +485,13 @@ def plot_band_ratios(
 
                 mean_val = data_values.mean()
                 axes[i].axhline(y=mean_val, color=colors[i], linestyle=':',
-                              alpha=0.4, linewidth=1.5, label=f'平均 ({mean_val:.2f})')
+                              alpha=0.4, linewidth=1.5, label=f'Mean ({mean_val:.2f})')
 
             axes[i].legend(loc='upper right', fontsize=9)
 
-    axes[0].set_title(f'脳波指標の時間推移（{resample_interval}ごと平均）',
+    axes[0].set_title(f'EEG Metrics Time Series (averaged every {resample_interval})',
                      fontsize=14, fontweight='bold')
-    axes[-1].set_xlabel('時刻', fontsize=12)
+    axes[-1].set_xlabel('Time', fontsize=12)
     axes[-1].xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
     fig.autofmt_xdate()
     plt.tight_layout()
@@ -537,9 +537,9 @@ def plot_paf(paf_dict, img_path=None):
 
     ax1.axvline(x=iaf, color='black', linestyle='--', linewidth=2,
                label=f'IAF = {iaf:.2f} Hz')
-    ax1.set_xlabel('周波数 (Hz)', fontsize=12)
-    ax1.set_ylabel('パワースペクトル密度 (μV²/Hz)', fontsize=12)
-    ax1.set_title('Alpha帯域のPSD と PAF', fontsize=13, fontweight='bold')
+    ax1.set_xlabel('Frequency (Hz)', fontsize=12)
+    ax1.set_ylabel('Power Spectral Density (μV²/Hz)', fontsize=12)
+    ax1.set_title('Alpha Band PSD and PAF', fontsize=13, fontweight='bold')
     ax1.legend(fontsize=10)
     ax1.grid(True, alpha=0.3)
 
@@ -552,8 +552,8 @@ def plot_paf(paf_dict, img_path=None):
     ax2.axhline(y=iaf, color='black', linestyle='--', linewidth=2,
                label=f'IAF = {iaf:.2f} Hz')
     ax2.set_ylabel('PAF (Hz)', fontsize=12)
-    ax2.set_xlabel('チャネル', fontsize=12)
-    ax2.set_title('チャネル別 Peak Alpha Frequency', fontsize=13, fontweight='bold')
+    ax2.set_xlabel('Channel', fontsize=12)
+    ax2.set_title('Peak Alpha Frequency by Channel', fontsize=13, fontweight='bold')
     ax2.set_ylim(alpha_low, alpha_high)
     ax2.legend(fontsize=10)
     ax2.grid(True, alpha=0.3, axis='y')
@@ -610,15 +610,15 @@ def plot_paf_time_evolution(paf_time_dict, df, paf_dict, img_path=None):
 
     # 上図: PAFの時間変化
     ax1.plot(time_stamps, paf_over_time, color='lightblue',
-            alpha=0.3, linewidth=1, label='生データ')
+            alpha=0.3, linewidth=1, label='Raw Data')
     ax1.plot(time_stamps, paf_smoothed, color='blue',
-            linewidth=2, label=f'移動平均')
+            linewidth=2, label=f'Rolling Average')
     ax1.axhline(y=iaf, color='red', linestyle='--', linewidth=2,
                label=f'IAF = {iaf:.2f} Hz')
     ax1.fill_between(time_stamps, alpha_low, alpha_high,
-                     alpha=0.1, color='green', label='Alpha帯域 (8-13 Hz)')
+                     alpha=0.1, color='green', label='Alpha Band (8-13 Hz)')
     ax1.set_ylabel('PAF (Hz)', fontsize=12)
-    ax1.set_title('Peak Alpha Frequency の時間推移',
+    ax1.set_title('Peak Alpha Frequency Time Evolution',
                  fontsize=13, fontweight='bold')
     ax1.legend(loc='upper right', fontsize=10)
     ax1.grid(True, alpha=0.3)
@@ -635,14 +635,14 @@ def plot_paf_time_evolution(paf_time_dict, df, paf_dict, img_path=None):
         vmax=np.percentile(alpha_power, 95)
     )
     ax2.plot(time_stamps, paf_smoothed, color='red',
-            linewidth=2, linestyle='--', label='PAF推移')
-    ax2.set_xlabel('時刻', fontsize=12)
-    ax2.set_ylabel('周波数 (Hz)', fontsize=12)
-    ax2.set_title('Alpha帯域のスペクトログラムとPAF', fontsize=13, fontweight='bold')
+            linewidth=2, linestyle='--', label='PAF Evolution')
+    ax2.set_xlabel('Time', fontsize=12)
+    ax2.set_ylabel('Frequency (Hz)', fontsize=12)
+    ax2.set_title('Alpha Band Spectrogram and PAF', fontsize=13, fontweight='bold')
     ax2.legend(loc='upper right', fontsize=10)
 
     cbar = fig.colorbar(im, ax=ax2)
-    cbar.set_label('パワー (μV²)', fontsize=11)
+    cbar.set_label('Power (μV²)', fontsize=11)
 
     ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
     fig.autofmt_xdate()
@@ -656,7 +656,3 @@ def plot_paf_time_evolution(paf_time_dict, df, paf_dict, img_path=None):
     return fig
 
 
-def setup_japanese_font():
-    """日本語フォント設定"""
-    plt.rcParams['font.family'] = 'Noto Sans CJK JP'
-    plt.rcParams['axes.unicode_minus'] = False

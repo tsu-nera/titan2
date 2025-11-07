@@ -38,14 +38,10 @@ def get_psd_peak_frequencies(psd_dict, bands=None):
             band_psds = psds.mean(axis=0)[mask]
             peak_idx = band_psds.argmax()
             peak_info.append({
-                'バンド': band,
-                'ピーク周波数 (Hz)': band_freqs[peak_idx]
+                'Band': band,
+                'Peak Frequency (Hz)': band_freqs[peak_idx]
             })
 
     return pd.DataFrame(peak_info)
 
 
-def setup_japanese_font():
-    """日本語フォント設定"""
-    plt.rcParams['font.family'] = 'Noto Sans CJK JP'
-    plt.rcParams['axes.unicode_minus'] = False

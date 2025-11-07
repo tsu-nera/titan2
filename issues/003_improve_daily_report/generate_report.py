@@ -43,7 +43,6 @@ from lib import (
     plot_paf,
     plot_paf_time_evolution,
     get_psd_peak_frequencies,
-    setup_japanese_font,
     calculate_frontal_theta,
     plot_frontal_theta,
     calculate_frontal_asymmetry,
@@ -395,9 +394,6 @@ def run_full_analysis(data_path, output_dir):
     print('Muse脳波データ基本分析')
     print('='*60)
     print()
-
-    # 日本語フォント設定
-    setup_japanese_font()
 
     # 画像出力ディレクトリ
     img_dir = output_dir / 'img'

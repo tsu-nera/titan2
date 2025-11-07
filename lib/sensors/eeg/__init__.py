@@ -29,8 +29,7 @@ from .visualization import (
     plot_spectrogram,
     plot_band_ratios,
     plot_paf,
-    plot_paf_time_evolution,
-    setup_japanese_font
+    plot_paf_time_evolution
 )
 
 # ユーティリティ
@@ -84,7 +83,6 @@ __all__ = [
     'plot_band_ratios',
     'plot_paf',
     'plot_paf_time_evolution',
-    'setup_japanese_font',
     # ユーティリティ
     'get_psd_peak_frequencies',
     # Fmθ解析

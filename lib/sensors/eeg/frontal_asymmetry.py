@@ -74,14 +74,14 @@ def calculate_frontal_asymmetry(
     if raw is None:
         mne_dict = prepare_mne_raw(df)
         if not mne_dict:
-            raise ValueError('RAWデータを構築できませんでした。')
+            raise ValueError('Failed to construct RAW data.')
         raw = mne_dict['raw']
 
     raw = raw.copy()
     available = set(raw.ch_names)
     missing = [ch for ch in channels if ch not in available]
     if missing:
-        raise ValueError(f'指定チャネルが存在しません: {missing}')
+        raise ValueError(f'Specified channels not found: {missing}')
 
     raw.pick_channels(channels)
 
@@ -129,7 +129,7 @@ def calculate_frontal_asymmetry(
     right_power = power_df[right_channel].dropna()
 
     if left_power.empty or right_power.empty:
-        raise ValueError('左右のアルファパワーが計算できませんでした。')
+        raise ValueError('Failed to calculate left and right alpha power.')
 
     # FAA計算: ln(右) - ln(左)
     # ゼロや負の値を避けるため、微小値でクリップ
@@ -140,7 +140,7 @@ def calculate_frontal_asymmetry(
 
     faa_series = faa_series.dropna()
     if faa_series.empty:
-        raise ValueError('FAA時系列が空です。')
+        raise ValueError('FAA time series is empty.')
 
     # 統計計算
     faa_mean = faa_series.mean()
@@ -157,20 +157,20 @@ def calculate_frontal_asymmetry(
 
     # FAA解釈
     if faa_mean > 0.05:
-        interpretation = '左半球優位 (接近動機/ポジティブ)'
+        interpretation = 'Left hemisphere dominant (Approach motivation/Positive)'
     elif faa_mean < -0.05:
-        interpretation = '右半球優位 (回避動機/ネガティブ)'
+        interpretation = 'Right hemisphere dominant (Avoidance motivation/Negative)'
     else:
-        interpretation = 'バランス型'
+        interpretation = 'Balanced'
 
     stats_df = pd.DataFrame(
         [
-            {'指標': '平均FAA', '値': faa_mean, '単位': 'ln(μV²)'},
-            {'指標': '中央値', '値': faa_median, '単位': 'ln(μV²)'},
-            {'指標': '標準偏差', '値': faa_std, '単位': 'ln(μV²)'},
-            {'指標': '前半平均', '値': first_mean, '単位': 'ln(μV²)'},
-            {'指標': '後半平均', '値': second_mean, '単位': 'ln(μV²)'},
-            {'指標': '解釈', '値': interpretation, '単位': ''},
+            {'Metric': 'Mean FAA', 'Value': faa_mean, 'Unit': 'ln(μV²)'},
+            {'Metric': 'Median', 'Value': faa_median, 'Unit': 'ln(μV²)'},
+            {'Metric': 'Std Dev', 'Value': faa_std, 'Unit': 'ln(μV²)'},
+            {'Metric': 'First Half Mean', 'Value': first_mean, 'Unit': 'ln(μV²)'},
+            {'Metric': 'Second Half Mean', 'Value': second_mean, 'Unit': 'ln(μV²)'},
+            {'Metric': 'Interpretation', 'Value': interpretation, 'Unit': ''},
         ]
     )
 
@@ -228,7 +228,7 @@ def plot_frontal_asymmetry(
     right_power = result.right_power
 
     if faa_series.empty:
-        raise ValueError('FAA時系列が空です。')
+        raise ValueError('FAA time series is empty.')
 
     elapsed_minutes = (faa_series.index - faa_series.index[0]).total_seconds() / 60.0
 
@@ -239,17 +239,17 @@ def plot_frontal_asymmetry(
     left_elapsed = (left_power.index - left_power.index[0]).total_seconds() / 60.0
     right_elapsed = (right_power.index - right_power.index[0]).total_seconds() / 60.0
 
-    ax1.plot(left_elapsed, left_power.values, color='#d62728', linewidth=2, label='左前頭部 (AF7)', alpha=0.8)
-    ax1.plot(right_elapsed, right_power.values, color='#2ca02c', linewidth=2, label='右前頭部 (AF8)', alpha=0.8)
-    ax1.set_ylabel('アルファパワー (μV²)', fontsize=12)
-    ax1.set_title('左右前頭部アルファパワー', fontsize=13, fontweight='bold')
+    ax1.plot(left_elapsed, left_power.values, color='#d62728', linewidth=2, label='Left Frontal (AF7)', alpha=0.8)
+    ax1.plot(right_elapsed, right_power.values, color='#2ca02c', linewidth=2, label='Right Frontal (AF8)', alpha=0.8)
+    ax1.set_ylabel('Alpha Power (μV²)', fontsize=12)
+    ax1.set_title('Left and Right Frontal Alpha Power', fontsize=13, fontweight='bold')
     ax1.legend(loc='upper right')
     ax1.grid(True, alpha=0.3, linestyle='--')
 
     # 下段: FAA (ln(右) - ln(左))
     ax2 = axes[1]
     ax2.plot(elapsed_minutes, faa_series.values, color='#1f77b4', linewidth=2.2, label='FAA')
-    ax2.axhline(0, color='gray', linestyle='--', alpha=0.5, label='中央 (バランス)')
+    ax2.axhline(0, color='gray', linestyle='--', alpha=0.5, label='Center (Balanced)')
 
     # FAA解釈表示
     interpretation = result.metadata.get('interpretation', '')
@@ -257,15 +257,15 @@ def plot_frontal_asymmetry(
     ax2.text(
         0.02,
         0.95,
-        f'{interpretation}\n平均FAA: {mean_faa:.3f}',
+        f'{interpretation}\nMean FAA: {mean_faa:.3f}',
         transform=ax2.transAxes,
         fontsize=11,
         bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8),
         verticalalignment='top',
     )
 
-    ax2.set_xlabel('経過時間 (分)', fontsize=12)
-    ax2.set_ylabel('FAA [ln(右) - ln(左)]', fontsize=12)
+    ax2.set_xlabel('Elapsed Time (min)', fontsize=12)
+    ax2.set_ylabel('FAA [ln(Right) - ln(Left)]', fontsize=12)
     ax2.set_title('Frontal Alpha Asymmetry', fontsize=13, fontweight='bold')
     ax2.legend(loc='upper right')
     ax2.grid(True, alpha=0.3, linestyle='--')

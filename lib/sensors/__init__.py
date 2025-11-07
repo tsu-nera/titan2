@@ -40,8 +40,7 @@ from .eeg import (
     plot_band_ratios,
     plot_paf,
     plot_paf_time_evolution,
-    get_psd_peak_frequencies,
-    setup_japanese_font
+    get_psd_peak_frequencies
 )
 
 __all__ = [
@@ -72,5 +71,4 @@ __all__ = [
     'plot_paf',
     'plot_paf_time_evolution',
     'get_psd_peak_frequencies',
-    'setup_japanese_font',
 ]

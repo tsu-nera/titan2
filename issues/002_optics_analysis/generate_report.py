@@ -37,7 +37,6 @@ from lib import (  # noqa: E402
     plot_respiratory,
     plot_frequency_spectrum,
     plot_integrated_dashboard,
-    setup_japanese_font,
 )
 
 
@@ -316,9 +315,6 @@ def main():
         else Path(__file__).resolve().parent
     )
     img_dir = ensure_output_dirs(output_dir)
-
-    if not args.no_font:
-        setup_japanese_font()
 
     print(f"データ読み込み中: {data_path}")
     df = load_mind_monitor_csv(data_path, quality_filter=True)
