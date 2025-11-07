@@ -83,7 +83,7 @@ Mind Monitor (Muse Headband用アプリ) のCSVデータを扱う場合は、以
 
 ### ファイル構成
 ```
-titan2/
+satoru/
 ├── data/              # データファイル
 │   └── samples/       # サンプルCSVデータ
 ├── docs/              # ドキュメント
