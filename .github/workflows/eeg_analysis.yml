@@ -77,7 +77,7 @@ jobs:
           echo "  出力先: $OUTPUT_DIR"
 
           # レポート生成
-          python issues/003_improve_daily_report/generate_report.py \
+          python scripts/generate_report.py \
             --data "$CSV_PATH" \
             --output "$OUTPUT_DIR"
 
