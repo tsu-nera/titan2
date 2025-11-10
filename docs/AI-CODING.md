@@ -97,6 +97,40 @@ satoru/
 - クラス名: `PascalCase`
 - 関数・変数名: `snake_case`
 
+### DataFrameのカラム名規約
+
+**すべての統計情報DataFrameは英語カラム名を使用すること**
+
+#### 基本構造
+統計情報を格納するDataFrameは以下の標準形式を使用：
+```python
+pd.DataFrame([
+    {'Metric': 'Mean', 'Value': float, 'Unit': 'μV²'},
+    {'Metric': 'Median', 'Value': float, 'Unit': 'μV²'},
+    {'Metric': 'Std Dev', 'Value': float, 'Unit': 'μV²'},
+])
+```
+
+#### カラム名
+- **禁止**: `'指標'`, `'値'`, `'単位'`, `'平均値'`, `'中央値'` などの日本語カラム名
+- **推奨**: `'Metric'`, `'Value'`, `'Unit'`, `'Mean'`, `'Median'` などの英語カラム名
+
+#### メトリック名
+| 日本語（旧） | 英語（新） |
+|------------|-----------|
+| '平均' | 'Mean' |
+| '中央値' | 'Median' |
+| '標準偏差' | 'Std Dev' |
+| '前半平均' | 'First Half Mean' |
+| '後半平均' | 'Second Half Mean' |
+| '変化率 (後半/前半)' | 'Change Rate (2nd/1st)' |
+
+#### 理由
+- コードの一貫性向上
+- 国際化対応の容易化
+- Pandas/scikit-learnエコシステムとの親和性
+- 将来的なAPI公開やデータ共有を考慮
+
 ---
 
 ## コミットメッセージ

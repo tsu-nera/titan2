@@ -56,6 +56,7 @@ from lib import (
     get_optics_data,
     analyze_fnirs,
     plot_fnirs_muse_style,
+    generate_session_summary,
 )
 
 
@@ -155,14 +156,7 @@ def generate_markdown_report(data_path, output_dir, results):
 
         # 全体評価
         if overall_quality is not None:
-            if overall_quality <= 1.5:
-                quality_label = '優秀'
-            elif overall_quality <= 2.5:
-                quality_label = '良好'
-            else:
-                quality_label = '要改善'
-
-            report += f"- **総合品質**: {quality_label} (スコア: {overall_quality:.2f})\n"
+            report += f"- **総合品質スコア**: {overall_quality:.2f}\n"
             report += f"- **Good品質率**: {good_ratio:.1f}%\n\n"
 
         # チャネル別詳細
@@ -180,7 +174,7 @@ def generate_markdown_report(data_path, output_dir, results):
     # 総合スコア
     if 'session_score' in results:
         report += "### 総合評価\n\n"
-        report += f"- **総合スコア**: {results['session_score']:.1f}/100 ({results['session_level']})\n"
+        report += f"- **総合スコア**: {results['session_score']:.1f}/100\n"
 
         # スコア内訳
         if 'session_score_breakdown' in results:
@@ -196,27 +190,44 @@ def generate_markdown_report(data_path, output_dir, results):
             for key, label in score_labels.items():
                 if key in breakdown:
                     score_100 = breakdown[key] * 100
-                    level = "優秀" if score_100 >= 80 else "良好" if score_100 >= 65 else "普通" if score_100 >= 50 else "要改善"
-                    report += f"- {label}: {score_100:.1f}/100 ({level})\n"
+                    report += f"- {label}: {score_100:.1f}/100\n"
         report += "\n"
 
     # セッション総合評価
     if 'band_ratios_stats' in results:
         report += "### セッション総合評価\n\n"
-        for _, row in results['band_ratios_stats'].iterrows():
-            ratio_name = row['指標']
-            avg_value = row['平均値']
+        ratios_df = results['band_ratios_stats']
 
-            if 'リラックス' in ratio_name:
-                level = 'とても高い' if avg_value > 2.0 else '高い' if avg_value > 1.0 else '普通'
-            elif '集中' in ratio_name:
-                level = 'とても高い' if avg_value > 2.0 else '高い' if avg_value > 1.0 else '普通'
-            elif '瞑想' in ratio_name:
-                level = '深い' if avg_value > 1.5 else '中程度' if avg_value > 0.8 else '浅い'
-            else:
-                level = '不明'
+        # 新形式（縦長）か旧形式（横長）かを判定
+        if 'DisplayName' in ratios_df.columns:
+            # 新形式：Mean行のみを表示
+            mean_rows = ratios_df[ratios_df['Metric'].str.contains('Mean', na=False)]
+            for _, row in mean_rows.iterrows():
+                ratio_name = row['DisplayName']
+                avg_value = row['Value']
+                report += f"- **{ratio_name}**: {avg_value:.3f}\n"
+        else:
+            # 旧形式（後方互換）
+            for _, row in ratios_df.iterrows():
+                ratio_name = row.get('指標', row.get('Metric', '不明'))
+                avg_value = row.get('平均値', row.get('Value', 0.0))
+                report += f"- **{ratio_name}**: {avg_value:.3f}\n"
 
-            report += f"- **{ratio_name}**: {avg_value:.3f} ({level})\n"
+        # Fmθ平均を追加
+        if 'frontal_theta_stats' in results:
+            fmtheta_df = results['frontal_theta_stats']
+            fmtheta_mean_row = fmtheta_df[fmtheta_df['Metric'] == 'Mean']
+            if not fmtheta_mean_row.empty:
+                fmtheta_value = fmtheta_mean_row['Value'].iloc[0]
+                report += f"- **Fmθ平均 (μV²)**: {fmtheta_value:.3f}\n"
+
+        # IAF平均を追加
+        if 'iaf' in results:
+            iaf_data = results['iaf']
+            iaf_value = iaf_data['value']
+            iaf_std = iaf_data['std']
+            report += f"- **IAF平均 (Hz)**: {iaf_value:.2f} ± {iaf_std:.2f}\n"
+
         report += "\n"
 
     # ピークパフォーマンス区間
@@ -227,7 +238,8 @@ def generate_markdown_report(data_path, output_dir, results):
         if peak_range:
             report += "### ピークパフォーマンス\n\n"
             if peak_score is not None:
-                report += f"- **最高パフォーマンス区間**: {peak_range} (スコア: {peak_score:.1f}/100)\n\n"
+                report += f"- **最高パフォーマンス区間**: {peak_range}\n"
+                report += f"- **スコア**: {peak_score:.1f}/100\n\n"
             else:
                 report += f"- **最高パフォーマンス区間**: {peak_range}\n\n"
 
@@ -654,16 +666,16 @@ def run_full_analysis(data_path, output_dir):
         if fmtheta_result and 'frontal_theta_stats' in results:
             # 平均値を取得
             stats_df = results['frontal_theta_stats']
-            fmtheta_row = stats_df[stats_df['指標'] == '平均値']
+            fmtheta_row = stats_df[stats_df['Metric'] == 'Mean']
             if not fmtheta_row.empty:
-                fmtheta_val = fmtheta_row['値'].iloc[0]
+                fmtheta_val = fmtheta_row['Value'].iloc[0]
 
         se_val = None
         if 'spectral_entropy_stats' in results:
             se_stats_df = results['spectral_entropy_stats']
-            se_row = se_stats_df[se_stats_df['指標'] == '平均SE']
+            se_row = se_stats_df[se_stats_df['Metric'] == 'Mean']
             if not se_row.empty:
-                se_val = se_row['値'].iloc[0]
+                se_val = se_row['Value'].iloc[0]
 
         theta_alpha_val = None
         alpha_beta_val = None
@@ -679,26 +691,41 @@ def run_full_analysis(data_path, output_dir):
         # セグメント分析で取得できない場合、バンド比率から取得
         if theta_alpha_val is None and 'band_ratios_stats' in results:
             ratios_stats_df = results['band_ratios_stats']
-            theta_alpha_row = ratios_stats_df[ratios_stats_df['指標'] == '瞑想深度 (θ/α)']
-            if not theta_alpha_row.empty:
-                # バンド比率は生の比率なので、Belsに変換（10 * log10(ratio)）
-                raw_ratio = theta_alpha_row['平均値'].iloc[0]
-                if raw_ratio > 0:
-                    theta_alpha_val = 10 * np.log10(raw_ratio)
+            # 新形式
+            if 'DisplayName' in ratios_stats_df.columns:
+                theta_alpha_row = ratios_stats_df[ratios_stats_df['Metric'] == 'Theta/Alpha Mean']
+                if not theta_alpha_row.empty:
+                    raw_ratio = theta_alpha_row['Value'].iloc[0]
+                    if raw_ratio > 0:
+                        theta_alpha_val = 10 * np.log10(raw_ratio)
+            else:
+                # 旧形式
+                theta_alpha_row = ratios_stats_df[ratios_stats_df.get('指標', pd.Series()) == '瞑想深度 (θ/α)']
+                if not theta_alpha_row.empty:
+                    raw_ratio = theta_alpha_row.get('平均値', theta_alpha_row.get('Value', pd.Series())).iloc[0]
+                    if raw_ratio > 0:
+                        theta_alpha_val = 10 * np.log10(raw_ratio)
 
         # α/β比: バンド比率統計から取得
         if 'band_ratios_stats' in results:
             ratios_stats_df = results['band_ratios_stats']
-            alpha_beta_row = ratios_stats_df[ratios_stats_df['指標'] == 'リラックス度 (α/β)']
-            if not alpha_beta_row.empty:
-                alpha_beta_val = alpha_beta_row['平均値'].iloc[0]
+            # 新形式
+            if 'DisplayName' in ratios_stats_df.columns:
+                alpha_beta_row = ratios_stats_df[ratios_stats_df['Metric'] == 'Alpha/Beta Mean']
+                if not alpha_beta_row.empty:
+                    alpha_beta_val = alpha_beta_row['Value'].iloc[0]
+            else:
+                # 旧形式
+                alpha_beta_row = ratios_stats_df[ratios_stats_df.get('指標', pd.Series()) == 'リラックス度 (α/β)']
+                if not alpha_beta_row.empty:
+                    alpha_beta_val = alpha_beta_row.get('平均値', alpha_beta_row.get('Value', pd.Series())).iloc[0]
 
         faa_val = None
         if 'faa_stats' in results:
             faa_stats_df = results['faa_stats']
-            faa_row = faa_stats_df[faa_stats_df['指標'] == '平均FAA']
+            faa_row = faa_stats_df[faa_stats_df['Metric'] == 'Mean FAA']
             if not faa_row.empty:
-                faa_val = faa_row['値'].iloc[0]
+                faa_val = faa_row['Value'].iloc[0]
 
         iaf_cv_val = None
 
@@ -746,11 +773,19 @@ def run_full_analysis(data_path, output_dir):
     # レポート生成
     generate_markdown_report(data_path, output_dir, results)
 
+    # サマリーCSV生成
+    print('生成中: サマリーCSV...')
+    summary_result = generate_session_summary(data_path, results)
+    summary_csv_path = output_dir / 'summary.csv'
+    summary_result.summary.to_csv(summary_csv_path, index=False, encoding='utf-8')
+    print(f'✓ サマリーCSV生成完了: {summary_csv_path}')
+
     print()
     print('='*60)
     print('分析完了!')
     print('='*60)
     print(f'レポート: {output_dir / "REPORT.md"}')
+    print(f'サマリー: {summary_csv_path}')
     print(f'画像: {img_dir}/')
 
 

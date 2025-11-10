@@ -61,12 +61,18 @@ from .sensors.eeg import (
     plot_spectral_entropy,
 )
 
-from .eeg import (
+from .segment_analysis import (
     SegmentAnalysisResult,
     calculate_segment_analysis,
     plot_segment_comparison,
     MEDITATION_SCORE_WEIGHTS,
     calculate_meditation_score,
+)
+
+from .session_summary import (
+    SessionSummaryResult,
+    generate_session_summary,
+    extract_metric_value,
 )
 
 __all__ = [
@@ -126,4 +132,8 @@ __all__ = [
     'plot_segment_comparison',
     'MEDITATION_SCORE_WEIGHTS',
     'calculate_meditation_score',
+    # session summary
+    'SessionSummaryResult',
+    'generate_session_summary',
+    'extract_metric_value',
 ]
