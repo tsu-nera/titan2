@@ -436,9 +436,9 @@ def plot_band_ratios(
     ratio_df = ratios_dict['ratios'].copy()
 
     ratio_configs = [
-        'Relaxation (α/β)',
-        'Concentration (β/θ)',
-        'Meditation Depth (θ/α)',
+        'リラックス度 (α/β)',
+        '集中度 (β/θ)',
+        '瞑想深度 (θ/α)',
     ]
 
     # 外れ値のクリッピング

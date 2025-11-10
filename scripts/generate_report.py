@@ -20,7 +20,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 # プロジェクトルートをパスに追加
-project_root = Path(__file__).resolve().parents[2]
+project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root))
 
 # lib モジュールから関数をインポート
@@ -313,9 +313,6 @@ def generate_markdown_report(data_path, output_dir, results):
         se_keys = ['spectral_entropy_img', 'spectral_entropy_stats']
         if any(key in results for key in se_keys):
             report += "### Spectral Entropy (SE)\n\n"
-
-            if 'spectral_entropy_img' in results:
-                report += f"![Spectral Entropy](img/{results['spectral_entropy_img']})\n\n"
 
             if 'spectral_entropy_stats' in results:
                 report += results['spectral_entropy_stats'].to_markdown(index=False, floatfmt='.3f')

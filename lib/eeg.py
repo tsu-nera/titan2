@@ -342,7 +342,7 @@ def plot_segment_comparison(
         'fmtheta_mean': 'Fmθ',
         'alpha_mean': 'Alpha',
         'beta_mean': 'Beta',
-        'theta_alpha_ratio': 'θ/α比',
+        'theta_alpha_ratio': 'θ/α',
     }
     colors = {
         'fmtheta_mean': '#1f77b4',
@@ -384,9 +384,9 @@ def plot_segment_comparison(
     ax.set_xticks(x_positions)
     ax.set_xticklabels(xtick_labels, rotation=30, ha='right')
     ax.set_ylim(0.0, 1.05)
-    ax.set_ylabel('正規化スコア (0-1)')
-    ax.set_xlabel('時間セグメント')
-    ax.set_title(title or '時間セグメント別主要指標', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Normalized Score (0-1)')
+    ax.set_xlabel('Time Segment')
+    ax.set_title(title or 'Key Metrics by Time Segment', fontsize=14, fontweight='bold')
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1.0))
     fig.tight_layout()
