@@ -405,6 +405,110 @@ def plot_spectrogram(tfr_dict, bands=None, img_path=None):
     return fig
 
 
+def plot_spectrogram_grid(tfr_results, bands=None, img_path=None):
+    """
+    全チャネルのスペクトログラムを2x2グリッドでプロット
+
+    Parameters
+    ----------
+    tfr_results : dict
+        calculate_spectrogram_all_channels()の戻り値
+        {'RAW_TP9': tfr_dict, 'RAW_AF7': tfr_dict, ...}
+    bands : dict, optional
+        バンド定義辞書
+    img_path : str or Path, optional
+        保存先パス
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        生成された図オブジェクト
+    """
+    if bands is None:
+        bands = FREQ_BANDS
+
+    # 2x2グリッドレイアウト（前頭部上、側頭部下）
+    channel_layout = [
+        ['RAW_AF7', 'RAW_AF8'],  # 前頭部
+        ['RAW_TP9', 'RAW_TP10']  # 側頭部
+    ]
+
+    fig, axes = plt.subplots(2, 2, figsize=(16, 10))
+
+    # 全チャネルの最小・最大値を取得（カラースケール統一のため）
+    all_powers_db = []
+    for tfr_dict in tfr_results.values():
+        power_db = 10 * np.log10(tfr_dict['power'])
+        all_powers_db.append(power_db)
+
+    if all_powers_db:
+        vmin = np.percentile(np.concatenate([p.flatten() for p in all_powers_db]), 5)
+        vmax = np.percentile(np.concatenate([p.flatten() for p in all_powers_db]), 95)
+    else:
+        vmin, vmax = None, None
+
+    for i in range(2):
+        for j in range(2):
+            channel = channel_layout[i][j]
+            ax = axes[i, j]
+
+            if channel in tfr_results:
+                tfr_dict = tfr_results[channel]
+                power = tfr_dict['power']
+                freqs = tfr_dict['freqs']
+                times = tfr_dict['times']
+
+                # 秒を分に変換
+                times_min = times / 60.0
+
+                # dB変換
+                power_db = 10 * np.log10(power)
+
+                # スペクトログラム描画
+                im = ax.pcolormesh(
+                    times_min,
+                    freqs,
+                    power_db,
+                    shading='auto',
+                    cmap='viridis',
+                    vmin=vmin,
+                    vmax=vmax
+                )
+
+                # バンド境界線
+                fmax = freqs.max()
+                for band, (low, high, _) in bands.items():
+                    if low <= fmax:
+                        ax.axhline(y=low, color='white', linestyle='--', alpha=0.5, linewidth=0.8)
+                        if high <= fmax:
+                            ax.text(times_min[-1] * 0.02, (low + high) / 2, band,
+                                   color='white', fontsize=9, fontweight='bold')
+
+                ax.set_xlabel('Time (min)', fontsize=11)
+                ax.set_ylabel('Frequency (Hz)', fontsize=11)
+                ax.set_title(f'{channel.replace("RAW_", "")}',
+                            fontsize=12, fontweight='bold')
+                ax.set_ylim(0, fmax)
+
+                # カラーバー（各サブプロットに）
+                cbar = fig.colorbar(im, ax=ax)
+                cbar.set_label('Power (dB)', fontsize=9)
+
+            else:
+                ax.text(0.5, 0.5, f'{channel}\nNo Data',
+                       ha='center', va='center', fontsize=12)
+                ax.axis('off')
+
+    plt.suptitle('Spectrogram - All Channels', fontsize=14, fontweight='bold', y=0.995)
+    plt.tight_layout()
+
+    if img_path:
+        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    return fig
+
+
 def plot_band_ratios(
     ratios_dict,
     resample_interval='10S',
@@ -436,23 +540,23 @@ def plot_band_ratios(
     ratio_df = ratios_dict['ratios'].copy()
 
     ratio_configs = [
-        'リラックス度 (α/β)',
-        '集中度 (β/θ)',
-        '瞑想深度 (θ/α)',
+        ('Alpha/Beta', 'リラックス度 (α/β)'),
+        ('Beta/Theta', '集中度 (β/θ)'),
+        ('Theta/Alpha', '瞑想深度 (θ/α)'),
     ]
 
     # 外れ値のクリッピング
     if clip_percentile is not None:
-        for ratio_name in ratio_configs:
-            if ratio_name in ratio_df.columns:
-                upper_bound = ratio_df[ratio_name].quantile(clip_percentile / 100.0)
-                ratio_df[ratio_name] = ratio_df[ratio_name].clip(upper=upper_bound)
+        for ratio_key, _ in ratio_configs:
+            if ratio_key in ratio_df.columns:
+                upper_bound = ratio_df[ratio_key].quantile(clip_percentile / 100.0)
+                ratio_df[ratio_key] = ratio_df[ratio_key].clip(upper=upper_bound)
 
     # 移動平均による平滑化
     if smooth_window and smooth_window > 1:
-        for ratio_name in ratio_configs:
-            if ratio_name in ratio_df.columns:
-                ratio_df[ratio_name] = ratio_df[ratio_name].rolling(
+        for ratio_key, _ in ratio_configs:
+            if ratio_key in ratio_df.columns:
+                ratio_df[ratio_key] = ratio_df[ratio_key].rolling(
                     window=int(smooth_window),
                     min_periods=1,
                     center=True
@@ -461,23 +565,23 @@ def plot_band_ratios(
     fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
     colors = ['green', 'orange', 'purple']
 
-    for i, ratio_name in enumerate(ratio_configs):
-        if ratio_name in ratio_df.columns:
+    for i, (ratio_key, display_name) in enumerate(ratio_configs):
+        if ratio_key in ratio_df.columns:
             # Raw data (light color)
-            raw_data = ratios_dict['ratios'][ratio_name]
+            raw_data = ratios_dict['ratios'][ratio_key]
             axes[i].plot(ratios_dict['ratios']['TimeStamp'], raw_data,
                         color=colors[i], linewidth=1, alpha=0.2, label='Raw Data')
 
             # Smoothed data (dark color)
-            axes[i].plot(ratio_df['TimeStamp'], ratio_df[ratio_name],
+            axes[i].plot(ratio_df['TimeStamp'], ratio_df[ratio_key],
                         color=colors[i], linewidth=2.5, alpha=0.9, label='Rolling Median')
 
             axes[i].axhline(y=1.0, color='gray', linestyle='--', alpha=0.5, linewidth=1.5,
                            label='Baseline (1.0)')
-            axes[i].set_ylabel(ratio_name, fontsize=11, fontweight='bold')
+            axes[i].set_ylabel(display_name, fontsize=11, fontweight='bold')
             axes[i].grid(True, alpha=0.3)
 
-            data_values = ratio_df[ratio_name].dropna()
+            data_values = ratio_df[ratio_key].dropna()
             if len(data_values) > 0:
                 y_min = max(0, data_values.quantile(0.05) * 0.9)
                 y_max = data_values.quantile(0.95) * 1.1
@@ -654,5 +758,4 @@ def plot_paf_time_evolution(paf_time_dict, df, paf_dict, img_path=None):
         plt.close()
 
     return fig
-
 

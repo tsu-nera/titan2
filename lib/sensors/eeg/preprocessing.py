@@ -84,7 +84,8 @@ def filter_eeg_quality(df, require_all_good=False):
     return filtered, quality_mask
 
 
-def prepare_mne_raw(df, sfreq=None):
+def prepare_mne_raw(df, sfreq=None, apply_bandpass=True, apply_notch=True,
+                    l_freq=1.0, h_freq=50.0, notch_freqs=(50, 60)):
     """
     MNE RawArrayの準備
 
@@ -94,6 +95,16 @@ def prepare_mne_raw(df, sfreq=None):
         Mind Monitorデータフレーム（RAW_*列を含む、HeadBandOnで事前フィルタ済みを推奨）
     sfreq : float, optional
         サンプリングレート（Noneの場合は自動推定）
+    apply_bandpass : bool, default True
+        バンドパスフィルタを適用するか
+    apply_notch : bool, default True
+        ノッチフィルタを適用するか（電源ノイズ除去）
+    l_freq : float, default 1.0
+        バンドパスフィルタの下限周波数（Hz）
+    h_freq : float, default 50.0
+        バンドパスフィルタの上限周波数（Hz）
+    notch_freqs : tuple, default (50, 60)
+        ノッチフィルタで除去する周波数（Hz）
 
     Returns
     -------
@@ -105,6 +116,20 @@ def prepare_mne_raw(df, sfreq=None):
             'n_samples': int
         }
         RAWチャネルが見つからない場合はNone
+
+    Notes
+    -----
+    デフォルトで以下のフィルタが適用されます：
+    - バンドパスフィルタ: 1-50Hz（Museの有効帯域）
+    - ノッチフィルタ: 50Hz, 60Hz（電源ノイズ除去）
+
+    フィルタの適用順序：
+    1. バンドパスフィルタ（ベースラインドリフト除去 + 高周波ノイズカット）
+    2. ノッチフィルタ（電源ノイズの狭帯域除去）
+
+    参考：
+    - muse-lsl: examples/utils.py (60Hzノッチフィルタ)
+    - MNE-Python: Filtering and resampling tutorial
     """
     raw_cols = [c for c in df.columns if c.startswith('RAW_')]
     if not raw_cols:
@@ -137,9 +162,44 @@ def prepare_mne_raw(df, sfreq=None):
 
     raw = mne.io.RawArray(data, info, copy='auto', verbose=False)
 
-    # DCドリフト軽減のためのハイパスフィルタ
+    # フィルタリング
     if sfreq > 2.0:
-        raw = raw.filter(l_freq=1.0, h_freq=None, fir_design='firwin', verbose=False)
+        # 1. バンドパスフィルタ（ベースラインドリフト + 高周波ノイズ除去）
+        if apply_bandpass:
+            # Museの有効周波数帯域に制限（デフォルト: 1-50Hz）
+            nyquist = sfreq / 2.0
+            safety_margin = max(0.5, nyquist * 0.05)
+
+            effective_l_freq = l_freq if (l_freq is not None and l_freq < nyquist) else None
+            effective_h_freq = h_freq if h_freq is not None else None
+
+            if effective_h_freq is not None:
+                max_h_freq = max(nyquist - safety_margin, 0)
+                if max_h_freq <= 0:
+                    effective_h_freq = None
+                else:
+                    effective_h_freq = min(effective_h_freq, max_h_freq)
+
+            # Nyquist制限により同時指定できない場合はハイパスのみを優先
+            if (effective_l_freq is not None and effective_h_freq is not None
+                    and effective_h_freq <= effective_l_freq):
+                effective_h_freq = None
+
+            if effective_l_freq is not None or effective_h_freq is not None:
+                raw = raw.filter(
+                    l_freq=effective_l_freq,
+                    h_freq=effective_h_freq,
+                    fir_design='firwin',
+                    verbose=False,
+                )
+
+        # 2. ノッチフィルタ（電源ノイズ除去）
+        if apply_notch and notch_freqs:
+            # 50Hz/60Hz電源ノイズを除去
+            nyquist = sfreq / 2.0
+            valid_notch_freqs = [freq for freq in notch_freqs if 0 < freq < nyquist]
+            if valid_notch_freqs:
+                raw = raw.notch_filter(freqs=valid_notch_freqs, verbose=False)
 
     return {
         'raw': raw,

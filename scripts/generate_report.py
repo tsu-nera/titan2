@@ -32,6 +32,7 @@ from lib import (
     filter_eeg_quality,
     calculate_psd,
     calculate_spectrogram,
+    calculate_spectrogram_all_channels,
     calculate_band_ratios,
     calculate_paf,
     calculate_paf_time_evolution,
@@ -39,6 +40,7 @@ from lib import (
     plot_psd,
     plot_psd_time_series,
     plot_spectrogram,
+    plot_spectrogram_grid,
     plot_band_ratios,
     plot_paf,
     plot_paf_time_evolution,
@@ -515,14 +517,26 @@ def run_full_analysis(data_path, output_dir):
         # ピーク周波数
         results['psd_peaks'] = get_psd_peak_frequencies(psd_dict)
 
-        # スペクトログラム
-        print('計算中: スペクトログラム...')
-        tfr_dict = calculate_spectrogram(raw, channel='RAW_TP9')
+        # スペクトログラム（全チャネル）
+        print('計算中: スペクトログラム（全チャネル）...')
+        tfr_results = calculate_spectrogram_all_channels(raw)
+        tfr_primary = None
+        tfr_primary_channel = None
 
-        if tfr_dict:
-            print('プロット中: スペクトログラム...')
-            plot_spectrogram(tfr_dict, img_path=img_dir / 'spectrogram.png')
+        if tfr_results:
+            print('プロット中: スペクトログラム（全チャネル）...')
+            plot_spectrogram_grid(tfr_results, img_path=img_dir / 'spectrogram.png')
             results['spectrogram_img'] = 'spectrogram.png'
+
+            # 時系列解析で優先的に使うチャネル（TP9優先、なければ最初のチャネル）
+            preferred_channels = ('RAW_TP9', 'RAW_AF7', 'RAW_AF8', 'RAW_TP10')
+            for channel in preferred_channels:
+                if channel in tfr_results:
+                    tfr_primary = tfr_results[channel]
+                    tfr_primary_channel = channel
+                    break
+            if tfr_primary is None:
+                tfr_primary_channel, tfr_primary = next(iter(tfr_results.items()))
 
         # PAF分析
         print('計算中: Peak Alpha Frequency...')
@@ -544,10 +558,10 @@ def run_full_analysis(data_path, output_dir):
         results['paf_summary'] = pd.DataFrame(paf_summary)
         results['iaf'] = {'value': paf_dict['iaf'], 'std': paf_dict['iaf_std']}
 
-        # PAF時間推移
-        if tfr_dict:
-            print('計算中: PAF時間推移...')
-            paf_time_dict = calculate_paf_time_evolution(tfr_dict, paf_dict)
+        # PAF時間推移（優先チャネルを使用）
+        if tfr_primary:
+            print(f'計算中: PAF時間推移... (チャネル: {tfr_primary_channel})')
+            paf_time_dict = calculate_paf_time_evolution(tfr_primary, paf_dict)
 
             print('プロット中: PAF時間推移...')
             plot_paf_time_evolution(paf_time_dict, df, paf_dict, img_path=img_dir / 'paf_time_evolution.png')
@@ -576,10 +590,10 @@ def run_full_analysis(data_path, output_dir):
             se_result = calculate_spectral_entropy(psd_dict)
 
             # 時系列エントロピーの計算（スペクトログラムから）
-            if tfr_dict:
+            if tfr_primary:
                 session_start = df['TimeStamp'].iloc[0]
                 se_time_result = calculate_spectral_entropy_time_series(
-                    tfr_dict,
+                    tfr_primary,
                     start_time=pd.to_datetime(session_start)
                 )
 
