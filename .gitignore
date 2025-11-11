@@ -21,6 +21,7 @@ venv
 .ipynb_checkpoints
 __pycache__/
 output/
+.env
 
 # Large CSV data files (Issue 004)
 *.csv
