@@ -134,7 +134,13 @@ def plot_band_power_time_series(
     return fig
 
 
-def plot_psd(psd_dict, bands=None, img_path=None):
+def plot_psd(
+    psd_dict,
+    bands=None,
+    img_path=None,
+    use_mne_plot=True,
+    spectrum_plot_kwargs=None
+):
     """
     パワースペクトル密度（PSD）をプロット
 
@@ -146,42 +152,105 @@ def plot_psd(psd_dict, bands=None, img_path=None):
         バンド定義辞書
     img_path : str or Path, optional
         保存先パス
+    use_mne_plot : bool
+        Trueの場合はmne.Spectrum.plot()をベースにした描画を行い、
+        MNE標準のフィルタ境界表示やインタラクションを活用する
+    spectrum_plot_kwargs : dict, optional
+        mne.Spectrum.plot()へ渡す追加パラメータ
 
     Returns
     -------
     fig : matplotlib.figure.Figure
         生成された図オブジェクト
     """
+
     if bands is None:
         bands = FREQ_BANDS
 
     freqs = psd_dict['freqs']
     psds = psd_dict['psds']
     channels = psd_dict['channels']
+    spectrum = psd_dict.get('spectrum')
 
-    fig, ax = plt.subplots(figsize=(14, 6))
-    channel_colors = ['blue', 'green', 'red', 'purple']
+    axes = []
+    fig = None
 
-    for ch_name, psd, color in zip(channels, psds, channel_colors):
-        channel_label = ch_name.replace('RAW_', '')
-        ax.plot(freqs, psd, label=channel_label, linewidth=2, color=color, alpha=0.8)
+    def _highlight_bands(ax_list):
+        for ax in ax_list:
+            for band_name, (low, high, color) in bands.items():
+                label = f'{band_name} ({low}-{high}Hz)' if ax is ax_list[0] else None
+                ax.axvspan(low, high, alpha=0.12, color=color, label=label)
 
-    # バンド領域をハイライト
-    for band, (low, high, color) in bands.items():
-        ax.axvspan(low, high, alpha=0.1, color=color, label=f'{band} ({low}-{high}Hz)')
+    def _style_axes(ax_list):
+        if not ax_list:
+            return
+        x_max = min(50.0, freqs.max())
+        for ax in ax_list:
+            ax.set_xlim(0, x_max)
+            ax.set_xlabel('Frequency (Hz)', fontsize=12)
+            ax.grid(True, which='both', alpha=0.3)
+        primary = ax_list[0]
+        primary.set_ylabel('Power Spectral Density (μV²/Hz)', fontsize=12)
+        primary.set_title('EEG Power Spectral Density (PSD)', fontsize=14, fontweight='bold')
 
-    ax.set_xlim(0, min(50, freqs.max()))
-    ax.set_yscale('log')
-    ax.set_xlabel('Frequency (Hz)', fontsize=12)
-    ax.set_ylabel('Power Spectral Density (μV²/Hz)', fontsize=12)
-    ax.set_title('EEG Power Spectral Density (PSD)', fontsize=14, fontweight='bold')
-    ax.grid(True, which='both', alpha=0.3)
-    ax.legend(loc='upper right', fontsize=10)
+    def _format_channel_lines(ax):
+        if not channels:
+            return
+        channel_count = len(channels)
+        spectral_lines = [
+            line for line in ax.lines
+            if line.get_linestyle() == '-' and line.get_linewidth() <= 1.0
+        ]
+        if len(spectral_lines) >= channel_count:
+            spectral_lines = spectral_lines[-channel_count:]
+        color_cycle = plt.get_cmap('tab10')
+        for idx, (line, ch_name) in enumerate(zip(spectral_lines, channels)):
+            color = color_cycle(idx % 10)
+            line.set_color(color)
+            line.set_alpha(0.9)
+            line.set_linewidth(2.0)
+            line.set_label(ch_name.replace('RAW_', ''))
+
+    used_mne_plot = bool(use_mne_plot and spectrum is not None)
+
+    if used_mne_plot:
+        plot_kwargs = {
+            'average': False,
+            'dB': False,
+            'spatial_colors': False,
+            'show': False,
+        }
+        if spectrum_plot_kwargs:
+            plot_kwargs.update(spectrum_plot_kwargs)
+
+        fig = spectrum.plot(**plot_kwargs)
+        axes = list(fig.axes)
+        if axes:
+            _format_channel_lines(axes[0])
+    else:
+        fig, ax = plt.subplots(figsize=(14, 6))
+        axes = [ax]
+        color_cycle = plt.get_cmap('tab10')
+        for idx, (ch_name, psd) in enumerate(zip(channels, psds)):
+            channel_label = ch_name.replace('RAW_', '')
+            color = color_cycle(idx % 10)
+            ax.plot(freqs, psd, label=channel_label, linewidth=2, color=color, alpha=0.85)
+        ax.set_yscale('log')
+
+    _highlight_bands(axes)
+    _style_axes(axes)
+
+    primary_ax = axes[0] if axes else None
+    if primary_ax:
+        handles, labels = primary_ax.get_legend_handles_labels()
+        if handles:
+            primary_ax.legend(loc='upper right', fontsize=10)
+
     plt.tight_layout()
 
     if img_path:
-        plt.savefig(img_path, dpi=150, bbox_inches='tight')
-        plt.close()
+        fig.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
 
     return fig
 
@@ -758,4 +827,3 @@ def plot_paf_time_evolution(paf_time_dict, df, paf_dict, img_path=None):
         plt.close()
 
     return fig
-
