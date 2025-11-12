@@ -30,7 +30,8 @@ from .visualization import (
     plot_spectrogram_grid,
     plot_band_ratios,
     plot_paf,
-    plot_paf_time_evolution
+    plot_paf_time_evolution,
+    plot_raw_preview,
 )
 
 # ユーティリティ
@@ -86,6 +87,7 @@ __all__ = [
     'plot_band_ratios',
     'plot_paf',
     'plot_paf_time_evolution',
+    'plot_raw_preview',
     # ユーティリティ
     'get_psd_peak_frequencies',
     # Fmθ解析

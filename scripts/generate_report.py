@@ -44,6 +44,7 @@ from lib import (
     plot_band_ratios,
     plot_paf,
     plot_paf_time_evolution,
+    plot_raw_preview,
     get_psd_peak_frequencies,
     calculate_frontal_theta,
     plot_frontal_theta,
@@ -167,6 +168,14 @@ def generate_markdown_report(data_path, output_dir, results):
             report += hsi_data['statistics'].to_markdown(index=False, floatfmt='.2f')
             report += "\n\n"
             report += "> **注**: 1.0=Good, 2.0=Medium, 4.0=Bad\n\n"
+
+    # ========================================
+    # 生データプレビュー
+    # ========================================
+    if 'raw_preview_img' in results:
+        report += "## 🧾 生データプレビュー\n\n"
+        report += f"![生データプロット](img/{results['raw_preview_img']})\n\n"
+        report += "> **注**: フィルタ適用後EEGの初期数分（μV表示）。異常波形の早期チェック用。\n\n"
 
     # ========================================
     # 分析サマリー
@@ -488,6 +497,20 @@ def run_full_analysis(data_path, output_dir):
         raw = mne_dict['raw']
         print(f'検出されたチャネル: {mne_dict["channels"]}')
         print(f'推定サンプリングレート: {mne_dict["sfreq"]:.2f} Hz')
+
+        # Rawプレビュー
+        print('プロット中: 生データプレビュー...')
+        raw_preview_img = 'raw_preview.png'
+        raw_duration = raw.times[-1] if raw.n_times else 0.0
+        preview_duration = raw_duration if raw_duration and raw_duration < 180 else 180.0
+        plot_raw_preview(
+            raw,
+            img_path=img_dir / raw_preview_img,
+            duration_sec=preview_duration,
+            start_sec=0.0,
+            n_channels=min(4, len(mne_dict['channels'])),
+        )
+        results['raw_preview_img'] = raw_preview_img
 
         # PSD時系列
         print('プロット中: PSDの時間推移...')

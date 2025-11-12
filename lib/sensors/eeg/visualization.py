@@ -14,6 +14,112 @@ from .frequency import calculate_psd
 DEFAULT_SPECTROGRAM_CMAP = 'magma'
 
 
+def plot_raw_preview(
+    raw,
+    img_path=None,
+    duration_sec=120.0,
+    start_sec=None,
+    n_channels=4,
+    picks='eeg',
+    max_points=6000
+):
+    """Create a stacked time-domain preview of raw EEG signals.
+
+    Parameters
+    ----------
+    raw : mne.io.BaseRaw
+        フィルタ済みのMNE Rawオブジェクト。
+    img_path : str or Path, optional
+        画像保存パス。Noneの場合は保存しない。
+    duration_sec : float, default 120.0
+        プレビューに含める時間長（秒）。Noneまたは0以下の場合は全区間。
+    start_sec : float, optional
+        開始秒。Noneの場合は0秒から開始。
+    n_channels : int, default 4
+        表示するチャネル数。
+    picks : str or list, default 'eeg'
+        `Raw.copy().pick()`に渡すチャネル指定。
+    max_points : int, default 6000
+        描画に使用する最大サンプル数（超過すると均等間隔で間引き）。
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        生成された図（保存時はclose済み）。
+    """
+
+    if raw is None:
+        raise ValueError('raw must not be None')
+
+    preview = raw.copy().pick(picks=picks)
+    if preview.info['nchan'] == 0:
+        raise ValueError('指定されたpicksに一致するチャネルがありません。')
+
+    n_channels = max(1, min(n_channels, preview.info['nchan']))
+    sfreq = float(preview.info['sfreq'])
+    total_duration = preview.times[-1] if preview.n_times else 0.0
+
+    if duration_sec is None or duration_sec <= 0:
+        duration_sec = total_duration
+    if start_sec is None:
+        start_sec = 0.0
+
+    start_sec = float(np.clip(start_sec, 0.0, max(total_duration - 1e-6, 0.0)))
+    stop_sec = min(start_sec + duration_sec, total_duration)
+
+    start_sample = int(start_sec * sfreq)
+    stop_sample = int(stop_sec * sfreq) if stop_sec > 0 else preview.n_times
+    if stop_sample <= start_sample:
+        stop_sample = min(preview.n_times, start_sample + int(max(sfreq, 1)))
+
+    data, times = preview.get_data(
+        picks=list(range(n_channels)),
+        start=start_sample,
+        stop=stop_sample,
+        return_times=True,
+    )
+
+    if data.size == 0:
+        raise ValueError('生データが取得できませんでした。期間やpicksを見直してください。')
+
+    times_rel = times - times[0]
+
+    if max_points and data.shape[1] > max_points:
+        idx = np.linspace(0, data.shape[1] - 1, max_points).astype(int)
+        data = data[:, idx]
+        times_rel = times_rel[idx]
+
+    data_uv = data * 1e6  # Convert from V to μV for可読性
+
+    fig_height = max(3.0, 2.0 * n_channels)
+    fig, axes = plt.subplots(
+        n_channels,
+        1,
+        sharex=True,
+        figsize=(14, fig_height),
+        constrained_layout=True,
+    )
+    if not isinstance(axes, np.ndarray):
+        axes = np.array([axes])
+
+    cmap = plt.get_cmap('tab10')
+    for idx, ax in enumerate(axes):
+        channel_name = preview.ch_names[idx]
+        ax.plot(times_rel, data_uv[idx], color=cmap(idx % 10), linewidth=0.9)
+        ax.axhline(0, color='gray', linestyle='--', linewidth=0.6, alpha=0.6)
+        ax.set_ylabel(channel_name, rotation=0, labelpad=35, fontsize=11, fontweight='bold')
+        ax.grid(True, alpha=0.2, linestyle='-')
+
+    axes[-1].set_xlabel('Time (s)', fontsize=12)
+    axes[0].set_title('Raw EEG Preview (filtered)', fontsize=15, fontweight='bold', pad=14)
+
+    if img_path:
+        fig.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+
+    return fig
+
+
 def plot_band_power_time_series(
     df,
     bands=None,
