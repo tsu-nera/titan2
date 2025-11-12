@@ -11,6 +11,9 @@ from .constants import FREQ_BANDS
 from .frequency import calculate_psd
 
 
+DEFAULT_SPECTROGRAM_CMAP = 'magma'
+
+
 def plot_band_power_time_series(
     df,
     bands=None,
@@ -406,7 +409,136 @@ def plot_psd_time_series(
     return fig
 
 
-def plot_spectrogram(tfr_dict, bands=None, img_path=None):
+def _format_time_axis(ax, times, unit='seconds'):
+    if times is None or len(times) == 0:
+        return
+
+    start = float(times[0])
+    end = float(times[-1])
+    duration = max(end - start, np.finfo(float).eps)
+
+    if unit == 'minutes':
+        total_minutes = duration / 60.0
+        if total_minutes <= 5:
+            step = 1
+        elif total_minutes <= 15:
+            step = 2
+        else:
+            step = 5
+        ticks_min = np.arange(0, total_minutes + step, step)
+        ticks_sec = start + ticks_min * 60.0
+        if len(ticks_sec) == 0:
+            ticks_sec = np.array([start])
+            ticks_min = np.array([0.0])
+        ax.set_xticks(ticks_sec)
+        tick_labels = [f'{tick:.0f}' if step >= 1 else f'{tick:.1f}' for tick in ticks_min]
+        ax.set_xticklabels(tick_labels)
+        ax.set_xlabel('Time (min)', fontsize=12)
+    else:
+        ax.set_xlabel('Time (seconds)', fontsize=12)
+
+    ax.set_xlim(start, end)
+
+
+def _annotate_freq_bands(ax, bands, freq_max):
+    if not bands:
+        return
+
+    x_min, x_max = ax.get_xlim()
+    text_x = x_min + (x_max - x_min) * 0.02
+
+    for band_name, (low, high, _) in bands.items():
+        if low > freq_max:
+            continue
+        ax.axhline(y=low, color='white', linestyle='--', alpha=0.4, linewidth=0.8)
+        if high <= freq_max:
+            ax.text(
+                text_x,
+                (low + high) / 2.0,
+                band_name,
+                color='white',
+                fontsize=9,
+                fontweight='bold',
+                va='center'
+            )
+
+
+def _draw_spectrogram_on_axis(
+    ax,
+    tfr_dict,
+    bands,
+    *,
+    use_mne_plot=True,
+    tfr_plot_kwargs=None,
+    time_unit='seconds',
+    add_colorbar=True,
+    shared_vlim=None,
+    title=None
+):
+    freqs = tfr_dict['freqs']
+    times = tfr_dict['times']
+    power = tfr_dict['power']
+    tfr_obj = tfr_dict.get('tfr')
+
+    used_mne_plot = bool(use_mne_plot and tfr_obj is not None)
+
+    if used_mne_plot:
+        plot_kwargs = {
+            'picks': 0,
+            'axes': ax,
+            'colorbar': add_colorbar,
+            'dB': True,
+            'cmap': DEFAULT_SPECTROGRAM_CMAP,
+            'show': False,
+        }
+        if shared_vlim:
+            plot_kwargs['vlim'] = shared_vlim
+        if tfr_plot_kwargs:
+            plot_kwargs.update(tfr_plot_kwargs)
+
+        figs = tfr_obj.plot(**plot_kwargs)
+        fig = figs[0] if isinstance(figs, list) else figs
+    else:
+        safe_power = np.maximum(power, np.finfo(float).tiny)
+        power_db = 10 * np.log10(safe_power)
+        if shared_vlim:
+            vmin, vmax = shared_vlim
+        else:
+            vmin = np.percentile(power_db, 5)
+            vmax = np.percentile(power_db, 95)
+
+        im = ax.pcolormesh(
+            times,
+            freqs,
+            power_db,
+            shading='auto',
+            cmap=DEFAULT_SPECTROGRAM_CMAP,
+            vmin=vmin,
+            vmax=vmax
+        )
+        fig = ax.figure
+        if add_colorbar:
+            cbar = fig.colorbar(im, ax=ax)
+            cbar.set_label('Power (dB, μV²)', fontsize=11)
+
+    _format_time_axis(ax, times, time_unit)
+    ax.set_ylabel('Frequency (Hz)', fontsize=12)
+    ax.set_ylim(0, freqs.max())
+    _annotate_freq_bands(ax, bands, freqs.max())
+
+    if title:
+        ax.set_title(title, fontsize=14, fontweight='bold')
+
+    return fig
+
+
+def plot_spectrogram(
+    tfr_dict,
+    bands=None,
+    img_path=None,
+    use_mne_plot=True,
+    tfr_plot_kwargs=None
+):
     """
     スペクトログラムをプロット
 
@@ -427,54 +559,38 @@ def plot_spectrogram(tfr_dict, bands=None, img_path=None):
     if bands is None:
         bands = FREQ_BANDS
 
-    power = tfr_dict['power']
-    freqs = tfr_dict['freqs']
-    times = tfr_dict['times']
-    channel = tfr_dict['channel']
-
-    # dB変換
-    power_db = 10 * np.log10(power)
+    channel_label = tfr_dict['channel'].replace('RAW_', '')
 
     fig, ax = plt.subplots(figsize=(14, 7))
 
-    im = ax.pcolormesh(
-        times,
-        freqs,
-        power_db,
-        shading='auto',
-        cmap='viridis',
-        vmin=np.percentile(power_db, 5),
-        vmax=np.percentile(power_db, 95)
+    _draw_spectrogram_on_axis(
+        ax,
+        tfr_dict,
+        bands,
+        use_mne_plot=use_mne_plot,
+        tfr_plot_kwargs=tfr_plot_kwargs,
+        time_unit='seconds',
+        add_colorbar=True,
+        shared_vlim=None,
+        title=f'Spectrogram - {channel_label}'
     )
-
-    # バンド境界線
-    fmax = freqs.max()
-    for band, (low, high, _) in bands.items():
-        if low <= fmax:
-            ax.axhline(y=low, color='white', linestyle='--', alpha=0.5, linewidth=1)
-            if high <= fmax:
-                ax.text(times[-1] * 0.02, (low + high) / 2, band,
-                       color='white', fontsize=10, fontweight='bold')
-
-    ax.set_xlabel('Time (seconds)', fontsize=12)
-    ax.set_ylabel('Frequency (Hz)', fontsize=12)
-    ax.set_title(f'Spectrogram - {channel.replace("RAW_", "")}',
-                fontsize=14, fontweight='bold')
-    ax.set_ylim(0, fmax)
-
-    cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label('Power (dB, μV²)', fontsize=11)
 
     plt.tight_layout()
 
     if img_path:
-        plt.savefig(img_path, dpi=150, bbox_inches='tight')
-        plt.close()
+        fig.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
 
     return fig
 
 
-def plot_spectrogram_grid(tfr_results, bands=None, img_path=None):
+def plot_spectrogram_grid(
+    tfr_results,
+    bands=None,
+    img_path=None,
+    use_mne_plot=True,
+    tfr_plot_kwargs=None
+):
     """
     全チャネルのスペクトログラムを2x2グリッドでプロット
 
@@ -496,25 +612,26 @@ def plot_spectrogram_grid(tfr_results, bands=None, img_path=None):
     if bands is None:
         bands = FREQ_BANDS
 
-    # 2x2グリッドレイアウト（前頭部上、側頭部下）
     channel_layout = [
-        ['RAW_AF7', 'RAW_AF8'],  # 前頭部
-        ['RAW_TP9', 'RAW_TP10']  # 側頭部
+        ['RAW_AF7', 'RAW_AF8'],
+        ['RAW_TP9', 'RAW_TP10']
     ]
 
     fig, axes = plt.subplots(2, 2, figsize=(16, 10))
 
-    # 全チャネルの最小・最大値を取得（カラースケール統一のため）
     all_powers_db = []
     for tfr_dict in tfr_results.values():
-        power_db = 10 * np.log10(tfr_dict['power'])
-        all_powers_db.append(power_db)
+        safe_power = np.maximum(tfr_dict['power'], np.finfo(float).tiny)
+        all_powers_db.append(10 * np.log10(safe_power))
 
     if all_powers_db:
-        vmin = np.percentile(np.concatenate([p.flatten() for p in all_powers_db]), 5)
-        vmax = np.percentile(np.concatenate([p.flatten() for p in all_powers_db]), 95)
+        concatenated = np.concatenate([p.flatten() for p in all_powers_db])
+        shared_vlim = (
+            float(np.percentile(concatenated, 5)),
+            float(np.percentile(concatenated, 95))
+        )
     else:
-        vmin, vmax = None, None
+        shared_vlim = None
 
     for i in range(2):
         for j in range(2):
@@ -523,57 +640,28 @@ def plot_spectrogram_grid(tfr_results, bands=None, img_path=None):
 
             if channel in tfr_results:
                 tfr_dict = tfr_results[channel]
-                power = tfr_dict['power']
-                freqs = tfr_dict['freqs']
-                times = tfr_dict['times']
-
-                # 秒を分に変換
-                times_min = times / 60.0
-
-                # dB変換
-                power_db = 10 * np.log10(power)
-
-                # スペクトログラム描画
-                im = ax.pcolormesh(
-                    times_min,
-                    freqs,
-                    power_db,
-                    shading='auto',
-                    cmap='viridis',
-                    vmin=vmin,
-                    vmax=vmax
+                _draw_spectrogram_on_axis(
+                    ax,
+                    tfr_dict,
+                    bands,
+                    use_mne_plot=use_mne_plot,
+                    tfr_plot_kwargs=tfr_plot_kwargs,
+                    time_unit='minutes',
+                    add_colorbar=True,
+                    shared_vlim=shared_vlim,
+                    title=channel.replace('RAW_', '')
                 )
-
-                # バンド境界線
-                fmax = freqs.max()
-                for band, (low, high, _) in bands.items():
-                    if low <= fmax:
-                        ax.axhline(y=low, color='white', linestyle='--', alpha=0.5, linewidth=0.8)
-                        if high <= fmax:
-                            ax.text(times_min[-1] * 0.02, (low + high) / 2, band,
-                                   color='white', fontsize=9, fontweight='bold')
-
-                ax.set_xlabel('Time (min)', fontsize=11)
-                ax.set_ylabel('Frequency (Hz)', fontsize=11)
-                ax.set_title(f'{channel.replace("RAW_", "")}',
-                            fontsize=12, fontweight='bold')
-                ax.set_ylim(0, fmax)
-
-                # カラーバー（各サブプロットに）
-                cbar = fig.colorbar(im, ax=ax)
-                cbar.set_label('Power (dB)', fontsize=9)
-
             else:
                 ax.text(0.5, 0.5, f'{channel}\nNo Data',
-                       ha='center', va='center', fontsize=12)
+                        ha='center', va='center', fontsize=12)
                 ax.axis('off')
 
     plt.suptitle('Spectrogram - All Channels', fontsize=14, fontweight='bold', y=0.995)
     plt.tight_layout()
 
     if img_path:
-        plt.savefig(img_path, dpi=150, bbox_inches='tight')
-        plt.close()
+        fig.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
 
     return fig
 

@@ -5,6 +5,7 @@
 import warnings
 import numpy as np
 import mne
+from mne.time_frequency import AverageTFRArray
 
 # Warningsとログを抑制
 warnings.filterwarnings('ignore')
@@ -121,11 +122,23 @@ def calculate_spectrogram(raw, freqs=None, channel='RAW_TP9', fmax=50.0):
     # V² を μV² へ変換
     power_uv = power[0, 0] * 1e12
 
+    tfr_info = mne.create_info([channel], sfreq, ch_types=['eeg'])
+    tfr_data = power_uv[np.newaxis, :, :]
+    tfr_object = AverageTFRArray(
+        info=tfr_info,
+        data=tfr_data,
+        times=raw.times,
+        freqs=freqs,
+        nave=1,
+        method='morlet'
+    )
+
     return {
         'power': power_uv,
         'freqs': freqs,
         'times': raw.times,
-        'channel': channel
+        'channel': channel,
+        'tfr': tfr_object
     }
 
 
