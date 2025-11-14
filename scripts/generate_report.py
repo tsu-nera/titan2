@@ -492,11 +492,18 @@ def run_full_analysis(data_path, output_dir):
     print('準備中: MNE RAWデータ...')
     mne_dict = prepare_mne_raw(df)
     raw = None
+    raw_unfiltered = None  # Fmθ/FAA用のフィルタなしraw
 
     if mne_dict:
         raw = mne_dict['raw']
         print(f'検出されたチャネル: {mne_dict["channels"]}')
         print(f'推定サンプリングレート: {mne_dict["sfreq"]:.2f} Hz')
+
+        # Fmθ/FAA計算用に、バンドパスフィルタを適用しないrawデータを作成
+        # (これらの関数は内部で独自のバンドパスフィルタを適用するため)
+        mne_dict_unfiltered = prepare_mne_raw(df, apply_bandpass=False, apply_notch=False)
+        if mne_dict_unfiltered:
+            raw_unfiltered = mne_dict_unfiltered['raw']
 
         # Rawプレビュー
         print('プロット中: 生データプレビュー...')
@@ -541,8 +548,11 @@ def run_full_analysis(data_path, output_dir):
         results['psd_peaks'] = get_psd_peak_frequencies(psd_dict)
 
         # スペクトログラム（全チャネル）
+        # 256Hzは過剰なため、64Hzにダウンサンプリング（高速化）
+        # スペクトログラムは30Hz程度までカバーできれば十分
         print('計算中: スペクトログラム（全チャネル）...')
-        tfr_results = calculate_spectrogram_all_channels(raw)
+        raw_for_tfr = raw.copy().resample(64, verbose=False)
+        tfr_results = calculate_spectrogram_all_channels(raw_for_tfr)
         tfr_primary = None
         tfr_primary_channel = None
 
@@ -594,7 +604,7 @@ def run_full_analysis(data_path, output_dir):
         # FAA解析
         try:
             print('計算中: Frontal Alpha Asymmetry...')
-            faa_result = calculate_frontal_asymmetry(df, raw=raw)
+            faa_result = calculate_frontal_asymmetry(df, raw=raw_unfiltered)
             print('プロット中: Frontal Alpha Asymmetry...')
             plot_frontal_asymmetry(
                 faa_result,
@@ -635,7 +645,7 @@ def run_full_analysis(data_path, output_dir):
     fmtheta_result = None
     try:
         print('計算中: Frontal Midline Theta...')
-        fmtheta_result = calculate_frontal_theta(df, raw=raw if mne_dict else None)
+        fmtheta_result = calculate_frontal_theta(df, raw=raw_unfiltered if raw_unfiltered else None)
         print('プロット中: Frontal Midline Theta...')
         plot_frontal_theta(
             fmtheta_result,

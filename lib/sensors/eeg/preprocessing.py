@@ -119,6 +119,13 @@ def prepare_mne_raw(df, sfreq=None, apply_bandpass=True, apply_notch=True,
 
     Notes
     -----
+    **サンプリングレート**:
+    Interaxon社とMind Monitor開発者の公式見解により、タイムスタンプは
+    Bluetoothバッファリングの影響で不正確（重複や不均一な間隔）です。
+    ハードウェアは正確に256Hzでサンプリングしているため、
+    sfreq=Noneの場合は256Hz固定と仮定します。
+
+    **フィルタリング**:
     デフォルトで以下のフィルタが適用されます：
     - バンドパスフィルタ: 1-50Hz（Museの有効帯域）
     - ノッチフィルタ: 50Hz, 60Hz（電源ノイズ除去）
@@ -128,6 +135,7 @@ def prepare_mne_raw(df, sfreq=None, apply_bandpass=True, apply_notch=True,
     2. ノッチフィルタ（電源ノイズの狭帯域除去）
 
     参考：
+    - Mind Monitor Forums: https://mind-monitor.com/forums0/viewtopic.php?p=4644
     - muse-lsl: examples/utils.py (60Hzノッチフィルタ)
     - MNE-Python: Filtering and resampling tutorial
     """
@@ -137,28 +145,26 @@ def prepare_mne_raw(df, sfreq=None, apply_bandpass=True, apply_notch=True,
 
     df_filtered, _ = filter_eeg_quality(df)
 
-    # 数値変換と前処理
+    # 数値変換
     numeric = df_filtered[raw_cols].apply(pd.to_numeric, errors='coerce')
-    frame = pd.concat([df_filtered['TimeStamp'], numeric], axis=1)
-    frame = frame.set_index('TimeStamp')
 
-    # 重複タイムスタンプは平均化
-    frame = frame.groupby(level=0).mean()
+    # 欠損値を補間（前後の値から線形補間）
+    numeric = numeric.interpolate(method='linear').ffill().bfill()
 
-    # 時間補間で欠損値を埋める
-    frame = frame.interpolate(method='time').ffill().bfill()
-
-    # サンプリングレートの推定
+    # サンプリングレートの決定
+    # Interaxon社公式推奨：タイムスタンプは不正確（Bluetoothバッファリング起因）
+    # ハードウェアは正確に256Hzでサンプリングしているため、256Hz固定と仮定
+    # 参考: https://mind-monitor.com/forums0/viewtopic.php?p=4644
     if sfreq is None:
-        sfreq = _estimate_sampling_rate(frame)
+        sfreq = 256.0  # Muse標準サンプリングレート（MU-01は220Hz）
 
     # MNE RawArrayの作成
-    ch_names = list(frame.columns)
+    ch_names = list(numeric.columns)
     ch_types = ['eeg'] * len(ch_names)
     info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
 
     # μVスケールをVに変換
-    data = frame.to_numpy().T * 1e-6
+    data = numeric.to_numpy().T * 1e-6
 
     raw = mne.io.RawArray(data, info, copy='auto', verbose=False)
 
@@ -205,5 +211,5 @@ def prepare_mne_raw(df, sfreq=None, apply_bandpass=True, apply_notch=True,
         'raw': raw,
         'channels': ch_names,
         'sfreq': sfreq,
-        'n_samples': len(frame)
+        'n_samples': len(numeric)
     }

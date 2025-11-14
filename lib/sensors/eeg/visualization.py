@@ -293,13 +293,15 @@ def plot_psd(
     def _style_axes(ax_list):
         if not ax_list:
             return
-        x_max = min(50.0, freqs.max())
+        # 瞑想/脳波解析では30Hzまでが主要な範囲（Delta~Beta帯域）
+        # Gamma帯域（30-44Hz）も表示したい場合は35Hzに変更
+        x_max = min(30.0, freqs.max())
         for ax in ax_list:
             ax.set_xlim(0, x_max)
             ax.set_xlabel('Frequency (Hz)', fontsize=12)
             ax.grid(True, which='both', alpha=0.3)
         primary = ax_list[0]
-        primary.set_ylabel('Power Spectral Density (μV²/Hz)', fontsize=12)
+        primary.set_ylabel('Power Spectral Density (dB)', fontsize=12)
         primary.set_title('EEG Power Spectral Density (PSD)', fontsize=14, fontweight='bold')
 
     def _format_channel_lines(ax):
@@ -325,7 +327,7 @@ def plot_psd(
     if used_mne_plot:
         plot_kwargs = {
             'average': False,
-            'dB': False,
+            'dB': True,
             'spatial_colors': False,
             'show': False,
         }
