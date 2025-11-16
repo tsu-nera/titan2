@@ -52,7 +52,6 @@ from lib import (
     plot_frontal_asymmetry,
     calculate_spectral_entropy,
     calculate_spectral_entropy_time_series,
-    plot_spectral_entropy,
     calculate_segment_analysis,
     plot_segment_comparison,
     calculate_meditation_score,
@@ -333,13 +332,10 @@ def generate_markdown_report(data_path, output_dir, results):
                 report += "> **解釈**: FAA = ln(右) - ln(左)。正値は左半球優位（接近動機・ポジティブ感情）、負値は右半球優位（回避動機・ネガティブ感情）を示唆します。\n\n"
 
         # Spectral Entropy
-        se_keys = ['spectral_entropy_img', 'spectral_entropy_stats']
-        if any(key in results for key in se_keys):
+        if 'spectral_entropy_stats' in results:
             report += "### Spectral Entropy (SE)\n\n"
-
-            if 'spectral_entropy_stats' in results:
-                report += results['spectral_entropy_stats'].to_markdown(index=False, floatfmt='.3f')
-                report += "\n\n"
+            report += results['spectral_entropy_stats'].to_markdown(index=False, floatfmt='.3f')
+            report += "\n\n"
 
             if 'spectral_entropy_change' in results:
                 change = results['spectral_entropy_change']
@@ -630,12 +626,6 @@ def run_full_analysis(data_path, output_dir):
                     start_time=pd.to_datetime(session_start)
                 )
 
-                print('プロット中: Spectral Entropy...')
-                plot_spectral_entropy(
-                    se_time_result,
-                    img_path=img_dir / 'spectral_entropy.png'
-                )
-                results['spectral_entropy_img'] = 'spectral_entropy.png'
                 results['spectral_entropy_stats'] = se_time_result.statistics
                 results['spectral_entropy_change'] = se_time_result.metadata.get('change_percent')
         except Exception as exc:
