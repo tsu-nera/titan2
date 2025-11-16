@@ -33,7 +33,6 @@ from lib import (
     calculate_psd,
     calculate_spectrogram,
     calculate_spectrogram_all_channels,
-    calculate_band_ratios,
     calculate_paf,
     calculate_paf_time_evolution,
     plot_band_power_time_series,
@@ -60,6 +59,7 @@ from lib import (
     plot_fnirs_muse_style,
     generate_session_summary,
 )
+from lib.statistical_dataframe import create_statistical_dataframe
 
 
 def format_timestamp_for_report(value):
@@ -353,11 +353,6 @@ def generate_markdown_report(data_path, output_dir, results):
             if 'band_ratios_img' in results:
                 report += f"![バンド比率](img/{results['band_ratios_img']})\n\n"
 
-            if 'band_ratios_stats' in results:
-                report += results['band_ratios_stats'].to_markdown(index=False, floatfmt='.3f')
-                report += "\n\n"
-                report += "> **注**: 統計値は外れ値（Z-score > 3）を除外して計算されています。IQRは四分位範囲（75%点 - 25%点）を示します。\n\n"
-
     # ========================================
     # 血流動態分析 (fNIRS)
     # ========================================
@@ -647,9 +642,31 @@ def run_full_analysis(data_path, output_dir):
     except Exception as exc:
         print(f'警告: Fmθ解析に失敗しました ({exc})')
 
+    # Statistical DataFrame生成（統一的なバンドパワー・比率計算）
+    statistical_df = None
+    if raw is not None:
+        try:
+            print('計算中: Statistical DataFrame（統一的なバンドパワー・比率計算）...')
+            session_start = df['TimeStamp'].iloc[0]
+            statistical_df = create_statistical_dataframe(
+                raw,
+                segment_minutes=3,
+                warmup_minutes=1.0,
+                session_start=session_start,
+            )
+            results['statistical_df'] = statistical_df
+            print(f'  バンドパワー: {len(statistical_df["band_powers"])} セグメント')
+            print(f'  バンド比率: {len(statistical_df["band_ratios"])} セグメント')
+        except Exception as exc:
+            print(f'警告: Statistical DataFrame生成に失敗しました ({exc})')
+
     # 時間セグメント分析
     try:
         print('計算中: 時間セグメント分析...')
+
+        if statistical_df is None:
+            print('警告: Statistical DFが生成されていないため、セグメント分析をスキップします。')
+            raise ValueError('Statistical DFが必要です')
 
         # IAF時系列の準備（PAF時間推移から）
         iaf_series = None
@@ -662,11 +679,10 @@ def run_full_analysis(data_path, output_dir):
         segment_result = calculate_segment_analysis(
             df_quality,
             fmtheta_result.time_series,
-            segment_minutes=5,
+            statistical_df,
+            segment_minutes=3,
             iaf_series=iaf_series,
             warmup_minutes=1.0,  # 最初の1分間を除外（アーティファクト対策）
-            raw=raw,  # MNE Epochsによる高精度バンドパワー計算を有効化
-            use_mne_epochs=True,  # デフォルトTrue（レガシーパスはFalse）
         )
         print('プロット中: 時間セグメント比較...')
         segment_plot_name = 'time_segment_metrics.png'
@@ -681,20 +697,42 @@ def run_full_analysis(data_path, output_dir):
     except Exception as exc:
         print(f'警告: 時間セグメント分析に失敗しました ({exc})')
 
-    # バンド比率
-    print('計算中: バンド比率...')
-    ratios_dict = calculate_band_ratios(df)
+    # バンド比率（Statistical DFから取得）
+    if statistical_df is not None:
+        print('バンド比率統計をStatistical DFから取得...')
+        results['band_ratios_stats'] = statistical_df['statistics']
 
-    print('プロット中: バンド比率...')
-    plot_band_ratios(
-        ratios_dict,
-        img_path=img_dir / 'band_ratios.png',
-        clip_percentile=95.0,
-        smooth_window=5
-    )
-    results['band_ratios_img'] = 'band_ratios.png'
-    results['band_ratios_stats'] = ratios_dict['statistics']
-    results['spike_analysis'] = ratios_dict['spike_analysis']
+        # プロット用にStatistical DFからデータを準備
+        try:
+            print('プロット中: バンド比率...')
+            # plot_band_ratios関数が期待する形式に変換
+            band_ratios_df = statistical_df['band_ratios'].copy()
+            band_ratios_df = band_ratios_df.reset_index()
+            band_ratios_df = band_ratios_df.rename(columns={'index': 'TimeStamp'})
+
+            # カラム名を旧形式に合わせる（plot_band_ratios関数との互換性のため）
+            band_ratios_df = band_ratios_df.rename(columns={
+                'alpha_beta': 'Alpha/Beta',
+                'beta_theta': 'Beta/Theta',
+                'theta_alpha': 'Theta/Alpha',
+            })
+
+            plot_band_ratios(
+                {
+                    'ratios': band_ratios_df,
+                    'statistics': statistical_df['statistics'],
+                },
+                img_path=img_dir / 'band_ratios.png',
+                clip_percentile=95.0,
+                smooth_window=5
+            )
+            results['band_ratios_img'] = 'band_ratios.png'
+        except Exception as exc:
+            print(f'警告: バンド比率プロットに失敗しました ({exc})')
+            import traceback
+            traceback.print_exc()
+    else:
+        print('警告: Statistical DFが生成されていないため、バンド比率をスキップします。')
 
     # セッション総合スコア計算
     try:
@@ -718,46 +756,43 @@ def run_full_analysis(data_path, output_dir):
 
         theta_alpha_val = None
         alpha_beta_val = None
+        beta_theta_val = None
 
-        # θ/α比: セグメント分析のBels差分を優先使用（より一貫性のある評価）
+        # バンド比率: セグメント分析から取得（Statistical DFベース、最も信頼性が高い）
         if 'segment_table' in results:
             segment_df = results['segment_table']
+
+            # θ/α比（Bels差分）: 総合スコア計算用
             if 'θ/α比 (Bels)' in segment_df.columns:
                 theta_alpha_values = segment_df['θ/α比 (Bels)'].dropna()
                 if len(theta_alpha_values) > 0:
                     theta_alpha_val = theta_alpha_values.mean()
 
-        # セグメント分析で取得できない場合、バンド比率から取得
-        if theta_alpha_val is None and 'band_ratios_stats' in results:
-            ratios_stats_df = results['band_ratios_stats']
-            # 新形式
-            if 'DisplayName' in ratios_stats_df.columns:
-                theta_alpha_row = ratios_stats_df[ratios_stats_df['Metric'] == 'Theta/Alpha Mean']
-                if not theta_alpha_row.empty:
-                    raw_ratio = theta_alpha_row['Value'].iloc[0]
-                    if raw_ratio > 0:
-                        theta_alpha_val = 10 * np.log10(raw_ratio)
-            else:
-                # 旧形式
-                theta_alpha_row = ratios_stats_df[ratios_stats_df.get('指標', pd.Series()) == '瞑想深度 (θ/α)']
-                if not theta_alpha_row.empty:
-                    raw_ratio = theta_alpha_row.get('平均値', theta_alpha_row.get('Value', pd.Series())).iloc[0]
-                    if raw_ratio > 0:
-                        theta_alpha_val = 10 * np.log10(raw_ratio)
+            # α/β比（実数値）
+            if 'α/β比' in segment_df.columns:
+                alpha_beta_values = segment_df['α/β比'].dropna()
+                if len(alpha_beta_values) > 0:
+                    alpha_beta_val = alpha_beta_values.mean()
 
-        # α/β比: バンド比率統計から取得
-        if 'band_ratios_stats' in results:
-            ratios_stats_df = results['band_ratios_stats']
-            # 新形式
-            if 'DisplayName' in ratios_stats_df.columns:
-                alpha_beta_row = ratios_stats_df[ratios_stats_df['Metric'] == 'Alpha/Beta Mean']
-                if not alpha_beta_row.empty:
-                    alpha_beta_val = alpha_beta_row['Value'].iloc[0]
-            else:
-                # 旧形式
-                alpha_beta_row = ratios_stats_df[ratios_stats_df.get('指標', pd.Series()) == 'リラックス度 (α/β)']
-                if not alpha_beta_row.empty:
-                    alpha_beta_val = alpha_beta_row.get('平均値', alpha_beta_row.get('Value', pd.Series())).iloc[0]
+            # β/θ比（実数値）- 新規追加
+            if 'β/θ比' in segment_df.columns:
+                beta_theta_values = segment_df['β/θ比'].dropna()
+                if len(beta_theta_values) > 0:
+                    beta_theta_val = beta_theta_values.mean()
+                    results['beta_theta_ratio'] = beta_theta_val  # レポート用に保存
+
+        # フォールバック: Statistical DFから直接取得
+        if theta_alpha_val is None and statistical_df is not None:
+            stats_df = statistical_df['statistics']
+            theta_alpha_row = stats_df[stats_df['Metric'] == 'theta_alpha_bels_Mean']
+            if not theta_alpha_row.empty:
+                theta_alpha_val = theta_alpha_row['Value'].iloc[0]
+
+        if alpha_beta_val is None and statistical_df is not None:
+            stats_df = statistical_df['statistics']
+            alpha_beta_row = stats_df[stats_df['Metric'] == 'alpha_beta_Mean']
+            if not alpha_beta_row.empty:
+                alpha_beta_val = alpha_beta_row['Value'].iloc[0]
 
         faa_val = None
         if 'faa_stats' in results:

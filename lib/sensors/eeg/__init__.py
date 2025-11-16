@@ -15,9 +15,6 @@ from .frequency import calculate_psd, calculate_spectrogram, calculate_spectrogr
 # 統計
 from .statistics import calculate_band_statistics, calculate_hsi_statistics
 
-# バンド比率
-from .ratios import calculate_band_ratios
-
 # PAF解析
 from .paf import calculate_paf, calculate_paf_time_evolution
 
@@ -73,8 +70,6 @@ __all__ = [
     # 統計
     'calculate_band_statistics',
     'calculate_hsi_statistics',
-    # バンド比率
-    'calculate_band_ratios',
     # PAF解析
     'calculate_paf',
     'calculate_paf_time_evolution',
